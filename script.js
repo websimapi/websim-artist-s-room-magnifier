@@ -4,6 +4,7 @@ const magnifier = document.getElementById('magnifier');
 const magnifierSize = 150; // Should match CSS width/height
 const zoomLevel = 3; // How much to zoom in
 let canvasRegion = null; // Will store the detected canvas coordinates
+let originalImageUrl = null; // Store the original URL
 
 async function generateAndSetImage() {
     try {
@@ -13,6 +14,7 @@ async function generateAndSetImage() {
           aspect_ratio: "16:9", // Good for full screen
         });
         const imageUrl = result.url;
+        originalImageUrl = imageUrl;
 
         if (!imageUrl) {
             throw new Error("Failed to generate image URL.");
@@ -27,11 +29,8 @@ async function generateAndSetImage() {
         const containerHeight = imageContainer.offsetHeight;
         magnifier.style.backgroundSize = `${containerWidth * zoomLevel}px ${containerHeight * zoomLevel}px`;
 
-        // Detect canvas region after image loads
-        const img = new Image();
-        img.crossOrigin = "Anonymous";
-        img.onload = () => detectCanvasRegion(img);
-        img.src = imageUrl;
+        // Load image and detect canvas
+        loadImageWithProxies(imageUrl);
 
     } catch (error) {
         console.error("Error generating or setting image:", error);
@@ -44,71 +43,205 @@ async function generateAndSetImage() {
     }
 }
 
-function detectCanvasRegion(img) {
-    // Create a canvas to analyze the image
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    
-    // Set canvas dimensions to match image
-    canvas.width = img.width;
-    canvas.height = img.height;
-    
-    // Draw the image on canvas
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    
-    // Get image data
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-    
-    // Create a binary map of white-ish pixels
-    const whiteMap = [];
-    const threshold = 200; // Threshold for what's considered "white"
-    
-    for (let y = 0; y < canvas.height; y++) {
-        whiteMap[y] = [];
-        for (let x = 0; x < canvas.width; x++) {
-            const idx = (y * canvas.width + x) * 4;
-            // Check if the pixel is white-ish (all RGB values high)
-            const isWhite = (
-                data[idx] > threshold && 
-                data[idx + 1] > threshold && 
-                data[idx + 2] > threshold
-            );
-            whiteMap[y][x] = isWhite ? 1 : 0;
+async function loadImageWithProxies(imageUrl) {
+    // List of CORS proxies to try
+    const corsProxies = [
+        (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+        (url) => `https://cors-anywhere.herokuapp.com/${url}`,
+        (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+        (url) => `https://crossorigin.me/${url}`,
+        (url) => `https://cors-proxy.htmldriven.com/?url=${encodeURIComponent(url)}`,
+        // Direct attempt without proxy as last resort
+        (url) => url
+    ];
+
+    // Try to convert to blob URL as an alternative method
+    try {
+        const blobUrl = await convertToBlobUrl(imageUrl);
+        if (blobUrl) {
+            console.log("Successfully converted to blob URL");
+            loadImageWithUrl(blobUrl);
+            return;
+        }
+    } catch (error) {
+        console.warn("Blob URL conversion failed, trying proxies", error);
+    }
+
+    // Try each proxy in sequence
+    let succeeded = false;
+    for (let i = 0; i < corsProxies.length && !succeeded; i++) {
+        try {
+            const proxyUrl = corsProxies[i](imageUrl);
+            console.log(`Trying proxy #${i+1}: ${proxyUrl.substring(0, 50)}...`);
+            
+            // Create a new image and try to load it
+            const img = new Image();
+            img.crossOrigin = "Anonymous";
+            
+            // Use a promise to handle the async image loading
+            await new Promise((resolve, reject) => {
+                img.onload = () => {
+                    console.log(`Successfully loaded image with proxy #${i+1}`);
+                    try {
+                        detectCanvasRegion(img);
+                        succeeded = true;
+                        resolve();
+                    } catch (e) {
+                        console.error("Canvas detection failed:", e);
+                        reject(e);
+                    }
+                };
+                img.onerror = (e) => {
+                    console.warn(`Failed to load with proxy #${i+1}:`, e);
+                    reject(new Error(`Proxy #${i+1} failed`));
+                };
+                img.src = proxyUrl;
+                
+                // Set a timeout to avoid hanging forever
+                setTimeout(() => reject(new Error("Timeout")), 5000);
+            });
+            
+        } catch (error) {
+            console.warn(`Proxy #${i+1} attempt failed:`, error);
         }
     }
     
-    // Find the largest white rectangle
-    const result = findLargestWhiteRectangle(whiteMap, canvas.width, canvas.height);
-    
-    if (result) {
-        console.log("Canvas detected:", result);
-        
-        // Convert to relative coordinates for the container
-        const containerRect = imageContainer.getBoundingClientRect();
-        const scaleX = containerRect.width / canvas.width;
-        const scaleY = containerRect.height / canvas.height;
-        
-        canvasRegion = {
-            x: result.x * scaleX,
-            y: result.y * scaleY,
-            width: result.width * scaleX,
-            height: result.height * scaleY
-        };
-        
-        // Add visualization for debugging (can be removed in production)
-        const debugOutline = document.createElement('div');
-        debugOutline.style.position = 'absolute';
-        debugOutline.style.border = '2px dashed red';
-        debugOutline.style.left = canvasRegion.x + 'px';
-        debugOutline.style.top = canvasRegion.y + 'px';
-        debugOutline.style.width = canvasRegion.width + 'px';
-        debugOutline.style.height = canvasRegion.height + 'px';
-        debugOutline.style.pointerEvents = 'none';
-        imageContainer.appendChild(debugOutline);
-    } else {
-        console.log("Canvas not detected");
+    if (!succeeded) {
+        console.warn("All proxy attempts failed, falling back to basic functionality without canvas detection");
+        // The image is still displayed but without canvas detection
     }
+}
+
+async function convertToBlobUrl(url) {
+    try {
+        // Try to fetch the image as a blob
+        const response = await fetch(url, {
+            mode: 'cors',
+            cache: 'no-cache',
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const blob = await response.blob();
+        return URL.createObjectURL(blob);
+    } catch (error) {
+        console.warn("Blob URL conversion failed:", error);
+        return null;
+    }
+}
+
+function loadImageWithUrl(url) {
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = () => detectCanvasRegion(img);
+    img.onerror = (e) => console.error("Error loading image:", e);
+    img.src = url;
+}
+
+function detectCanvasRegion(img) {
+    try {
+        // Create a canvas to analyze the image
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Set canvas dimensions to match image
+        canvas.width = img.width;
+        canvas.height = img.height;
+        
+        // Draw the image on canvas
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        // Get image data
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        
+        // Create a binary map of white-ish pixels
+        const whiteMap = [];
+        const threshold = 200; // Threshold for what's considered "white"
+        
+        for (let y = 0; y < canvas.height; y++) {
+            whiteMap[y] = [];
+            for (let x = 0; x < canvas.width; x++) {
+                const idx = (y * canvas.width + x) * 4;
+                // Check if the pixel is white-ish (all RGB values high)
+                const isWhite = (
+                    data[idx] > threshold && 
+                    data[idx + 1] > threshold && 
+                    data[idx + 2] > threshold
+                );
+                whiteMap[y][x] = isWhite ? 1 : 0;
+            }
+        }
+        
+        // Find the largest white rectangle
+        const result = findLargestWhiteRectangle(whiteMap, canvas.width, canvas.height);
+        
+        if (result) {
+            console.log("Canvas detected:", result);
+            
+            // Convert to relative coordinates for the container
+            const containerRect = imageContainer.getBoundingClientRect();
+            const scaleX = containerRect.width / canvas.width;
+            const scaleY = containerRect.height / canvas.height;
+            
+            canvasRegion = {
+                x: result.x * scaleX,
+                y: result.y * scaleY,
+                width: result.width * scaleX,
+                height: result.height * scaleY
+            };
+            
+            // Add visualization for debugging (can be removed in production)
+            const debugOutline = document.createElement('div');
+            debugOutline.style.position = 'absolute';
+            debugOutline.style.border = '2px dashed red';
+            debugOutline.style.left = canvasRegion.x + 'px';
+            debugOutline.style.top = canvasRegion.y + 'px';
+            debugOutline.style.width = canvasRegion.width + 'px';
+            debugOutline.style.height = canvasRegion.height + 'px';
+            debugOutline.style.pointerEvents = 'none';
+            imageContainer.appendChild(debugOutline);
+        } else {
+            console.log("Canvas not detected");
+            fallbackCanvasDetection();
+        }
+    } catch (error) {
+        console.error("Error in canvas detection:", error);
+        fallbackCanvasDetection();
+    }
+}
+
+function fallbackCanvasDetection() {
+    // Fallback method: define a reasonable canvas region in the center
+    const containerRect = imageContainer.getBoundingClientRect();
+    const centerX = containerRect.width / 2;
+    const centerY = containerRect.height / 2;
+    
+    // Define a region that's 30% of the container width and 40% of the height
+    const width = containerRect.width * 0.3;
+    const height = containerRect.height * 0.4;
+    
+    canvasRegion = {
+        x: centerX - width / 2,
+        y: centerY - height / 2,
+        width: width,
+        height: height
+    };
+    
+    console.log("Using fallback canvas region:", canvasRegion);
+    
+    // Add visualization for the fallback region
+    const debugOutline = document.createElement('div');
+    debugOutline.style.position = 'absolute';
+    debugOutline.style.border = '2px dashed orange';
+    debugOutline.style.left = canvasRegion.x + 'px';
+    debugOutline.style.top = canvasRegion.y + 'px';
+    debugOutline.style.width = canvasRegion.width + 'px';
+    debugOutline.style.height = canvasRegion.height + 'px';
+    debugOutline.style.pointerEvents = 'none';
+    imageContainer.appendChild(debugOutline);
 }
 
 function findLargestWhiteRectangle(grid, width, height) {
