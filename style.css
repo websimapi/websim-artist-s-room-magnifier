@@ -8,7 +8,7 @@ body, html {
     height: 100%;
     width: 100%;
     overflow: hidden; /* Prevent scrollbars */
-    cursor: none; /* Hide default cursor */
+    /* cursor: none; Let JS handle cursor */
 }
 
 #image-container {
@@ -18,7 +18,14 @@ body, html {
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    cursor: none; /* Hide default cursor */
+    cursor: none; /* Default: hide cursor, show magnifier */
+}
+
+#image-container.canvas-hover {
+    /* Use a built-in cursor for simplicity first */
+    cursor: crosshair;
+    /* Example using an SVG paintbrush cursor (adjust path data and colors as needed) */
+    /* cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="black" d="M7 14c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zm13.71-9.37l-1.34-1.34c-.39-.39-1.02-.39-1.41 0L9 12.25 11.75 15l8.96-8.96c.39-.39.39-1.02 0-1.41z"/></svg>') 4 18, auto; */
 }
 
 #magnifier {
@@ -34,24 +41,21 @@ body, html {
     pointer-events: none; /* Prevent magnifier from interfering with mouse events */
     box-shadow: 0 0 10px rgba(0,0,0,0.5);
     background-color: white; /* Fallback color */
-    cursor: none; /* Hide default cursor */
+    /* cursor: none; Inherited from parent or not needed */
     transform: translate(-50%, -50%); /* Center the magnifier on the cursor */
+    z-index: 10; /* Ensure magnifier is above the background */
 }
 
-#brush-cursor {
-    position: absolute;
-    width: 32px;
-    height: 32px;
-    pointer-events: none;
-    z-index: 1000;
-    transform: translate(-50%, -50%); /* Center the brush on the cursor */
-    display: none;
-}
-
-#brush-cursor.hidden {
-    display: none;
-}
-
-#brush-cursor svg {
-    filter: drop-shadow(1px 1px 1px rgba(0,0,0,0.5));
+#status {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 3px;
+    z-index: 100;
+    font-family: sans-serif;
+    font-size: 14px;
+    display: none; /* Initially hidden */
 }
