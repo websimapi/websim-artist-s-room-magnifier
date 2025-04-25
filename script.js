@@ -159,21 +159,40 @@ function detectCanvasRegion(img) {
         
         // Create a binary map of white-ish pixels
         const whiteMap = [];
-        const threshold = 200; // Threshold for what's considered "white"
+        const threshold = 170; // Reduced threshold from 200 to 170 for more lenient detection
+        const brightnessThreshold = 200; // Additional threshold for overall brightness
         
         for (let y = 0; y < canvas.height; y++) {
             whiteMap[y] = [];
             for (let x = 0; x < canvas.width; x++) {
                 const idx = (y * canvas.width + x) * 4;
-                // Check if the pixel is white-ish (all RGB values high)
+                
+                // Check if the pixel is white-ish using multiple criteria
+                // 1. Individual RGB values are high enough
+                // 2. The average brightness is high
+                // 3. The color is fairly balanced (not too yellow, blue, etc.)
+                
+                const r = data[idx];
+                const g = data[idx + 1];
+                const b = data[idx + 2];
+                
+                const brightness = (r + g + b) / 3;
+                const colorVariance = Math.max(Math.abs(r - g), Math.abs(r - b), Math.abs(g - b));
+                
+                // A pixel is considered white-ish if:
+                // - It's very bright overall AND
+                // - The RGB components are reasonably balanced (not too colorful)
                 const isWhite = (
-                    data[idx] > threshold && 
-                    data[idx + 1] > threshold && 
-                    data[idx + 2] > threshold
+                    (r > threshold && g > threshold && b > threshold) || // Original criteria, but more lenient
+                    (brightness > brightnessThreshold && colorVariance < 30) // New brightness-based criteria
                 );
+                
                 whiteMap[y][x] = isWhite ? 1 : 0;
             }
         }
+        
+        // Apply a simple smoothing to fill small gaps in the detected white areas
+        smoothWhiteMap(whiteMap, canvas.width, canvas.height);
         
         // Find the largest white rectangle
         const result = findLargestWhiteRectangle(whiteMap, canvas.width, canvas.height);
@@ -210,6 +229,43 @@ function detectCanvasRegion(img) {
     } catch (error) {
         console.error("Error in canvas detection:", error);
         fallbackCanvasDetection();
+    }
+}
+
+function smoothWhiteMap(whiteMap, width, height) {
+    // Create a copy of the white map
+    const smoothedMap = [];
+    for (let y = 0; y < height; y++) {
+        smoothedMap[y] = [...whiteMap[y]];
+    }
+    
+    // Simple smoothing: if a pixel is surrounded by mostly white pixels, make it white
+    for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+            // Skip pixels that are already white
+            if (whiteMap[y][x] === 1) continue;
+            
+            // Count white neighbors (8-connectivity)
+            let whiteNeighbors = 0;
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    if (dx === 0 && dy === 0) continue; // Skip the pixel itself
+                    if (whiteMap[y + dy][x + dx] === 1) {
+                        whiteNeighbors++;
+                    }
+                }
+            }
+            
+            // If 5 or more neighbors are white, make this pixel white too
+            if (whiteNeighbors >= 5) {
+                smoothedMap[y][x] = 1;
+            }
+        }
+    }
+    
+    // Copy the smoothed map back to the original
+    for (let y = 0; y < height; y++) {
+        whiteMap[y] = [...smoothedMap[y]];
     }
 }
 
@@ -252,6 +308,9 @@ function findLargestWhiteRectangle(grid, width, height) {
     const MIN_WIDTH = width * 0.1; // At least 10% of image width
     const MIN_HEIGHT = height * 0.1; // At least 10% of image height
     
+    // Try to find a more tolerant algorithm that can handle some non-white pixels
+    const MAX_NONWHITE_RATIO = 0.15; // Allow up to 15% non-white pixels in a candidate rectangle
+    
     for (let startY = 0; startY < height; startY++) {
         for (let startX = 0; startX < width; startX++) {
             // Only process if this pixel is white
@@ -265,19 +324,32 @@ function findLargestWhiteRectangle(grid, width, height) {
                 // If this potential rectangle is too narrow, skip
                 if (maxWidth < MIN_WIDTH) continue;
                 
-                // Find maximum height for this width
+                // Find maximum height with tolerance for some non-white pixels
                 let maxHeight = 0;
                 let isRectangle = true;
                 
                 while (isRectangle && startY + maxHeight < height) {
+                    let nonWhiteCount = 0;
+                    let totalCount = 0;
+                    
                     for (let x = 0; x < maxWidth; x++) {
-                        if (startX + x >= width || 
-                            startY + maxHeight >= height || 
-                            grid[startY + maxHeight][startX + x] !== 1) {
+                        if (startX + x >= width || startY + maxHeight >= height) {
                             isRectangle = false;
                             break;
                         }
+                        
+                        totalCount++;
+                        if (grid[startY + maxHeight][startX + x] !== 1) {
+                            nonWhiteCount++;
+                            
+                            // If too many non-white pixels in this row, stop expanding
+                            if (nonWhiteCount / totalCount > MAX_NONWHITE_RATIO) {
+                                isRectangle = false;
+                                break;
+                            }
+                        }
                     }
+                    
                     if (isRectangle) maxHeight++;
                 }
                 
