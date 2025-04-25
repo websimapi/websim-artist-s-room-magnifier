@@ -38,3 +38,20 @@ body, html {
     transform: translate(-50%, -50%); /* Center the magnifier on the cursor */
 }
 
+#brush-cursor {
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    pointer-events: none;
+    z-index: 1000;
+    transform: translate(-50%, -50%); /* Center the brush on the cursor */
+    display: none;
+}
+
+#brush-cursor.hidden {
+    display: none;
+}
+
+#brush-cursor svg {
+    filter: drop-shadow(1px 1px 1px rgba(0,0,0,0.5));
+}

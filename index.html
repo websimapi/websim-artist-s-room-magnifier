@@ -9,7 +9,14 @@
 <body>
     <div id="image-container">
         <div id="magnifier"></div>
+        <div id="brush-cursor" class="hidden">
+            <svg width="32" height="32" viewBox="0 0 32 32">
+                <path d="M9,23 L4,28 L2,26 L7,21 M21,3 C22.1,1.9 23.9,1.9 25,3 C26.1,4.1 26.1,5.9 25,7 L11,21 L5,19 L9,15 L9,11 L13,11 L19,5 L21,3 Z" 
+                      stroke="#000" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
     </div>
+    <canvas id="analysis-canvas" style="display:none;"></canvas>
     <script type="importmap">
       {
         "imports": {
@@ -21,5 +28,4 @@
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
-
 
