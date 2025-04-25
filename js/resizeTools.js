@@ -311,6 +311,11 @@ function endResizeMode() {
         addDebugOutline(canvasRegion, 'red', 3, 1.0);
     }
     
+    // Update tool belt position after canvas region has changed
+    import('./toolBelt.js').then(module => {
+        module.updateToolBeltPosition();
+    });
+    
     // Important: Set isResizing to false BEFORE dispatching mousemove event
     // so the magnifier logic works correctly
     isResizing = false;

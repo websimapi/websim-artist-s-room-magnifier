@@ -140,6 +140,14 @@ export function detectCanvasRegion(img) {
         // Show debug outline
         addDebugOutline(canvasRegion, 'red', 3, 1.0);
         console.log('Canvas detected:', canvasRegion, bestCanvasRegion);
+        
+        // Make canvasRegion available globally for other components
+        window.canvasRegion = canvasRegion;
+        
+        // Update tool belt position
+        import('./toolBelt.js').then(module => {
+            module.updateToolBeltPosition();
+        });
 
     } catch (e) {
         console.error("Canvas detection error", e);
@@ -313,8 +321,16 @@ export function fallbackCanvasDetection() {
     
     console.log("Using fallback canvas region:", canvasRegion);
     
+    // Make canvasRegion available globally for other components
+    window.canvasRegion = canvasRegion;
+    
     // Add visualization for the fallback region
     addDebugOutline(canvasRegion, 'orange', 2);
+    
+    // Update tool belt position
+    import('./toolBelt.js').then(module => {
+        module.updateToolBeltPosition();
+    });
 }
 
 /**

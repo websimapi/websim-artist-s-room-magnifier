@@ -4,6 +4,9 @@
 export function setupToolBelt() {
     const toolSlots = document.querySelectorAll('.tool-slot');
     
+    // Position the tool belt below the canvas region
+    updateToolBeltPosition();
+    
     // Set the first tool (magnifier) as active by default
     const magnifierSlot = document.querySelector('.tool-slot[data-tool="magnifier"]');
     if (magnifierSlot) {
@@ -50,4 +53,18 @@ function setActiveTool(toolType) {
     
     // Store the active tool for reference in other components
     window.activeTool = toolType;
+}
+
+/**
+ * Updates the tool belt position to be below the canvas region
+ */
+export function updateToolBeltPosition() {
+    const toolBelt = document.getElementById('tool-belt');
+    const { canvasRegion } = window;
+    
+    if (canvasRegion) {
+        const bottom = canvasRegion.y + canvasRegion.height + 20; // 20px padding
+        toolBelt.style.top = `${bottom}px`;
+        toolBelt.style.bottom = 'auto';
+    }
 }
