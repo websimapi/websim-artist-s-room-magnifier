@@ -7,6 +7,7 @@ let resizeHandles = [];
 let resizeOutline = null;
 let activeHandle = null;
 let startX, startY, startWidth, startHeight, startLeft, startTop;
+let outlineVisible = true; // Track outline visibility state
 
 /**
  * Sets up resize tools and context menu
@@ -15,6 +16,7 @@ export function setupResizeTools() {
     const imageContainer = document.getElementById('image-container');
     const contextMenu = document.getElementById('context-menu');
     const resizeOption = document.getElementById('resize-option');
+    const toggleOutline = document.getElementById('toggle-outline');
     const submitResizeBtn = document.getElementById('submit-resize');
     
     // Context menu event listeners
@@ -68,6 +70,29 @@ export function setupResizeTools() {
         clearDebugElements();
         addDebugOutline(canvasRegion, 'red', 3, 1.0);
     });
+    
+    // Toggle outline visibility handler
+    toggleOutline.addEventListener('click', () => {
+        contextMenu.style.display = 'none';
+        toggleOutlineVisibility();
+    });
+}
+
+/**
+ * Toggles the visibility of the canvas outline
+ */
+function toggleOutlineVisibility() {
+    outlineVisible = !outlineVisible;
+    clearDebugElements();
+    
+    // Update menu text based on current state
+    const toggleOutline = document.getElementById('toggle-outline');
+    toggleOutline.textContent = outlineVisible ? 'Hide Outline' : 'Show Outline';
+    
+    // If visible, redraw the outline
+    if (outlineVisible && canvasRegion) {
+        addDebugOutline(canvasRegion, 'red', 3, 1.0);
+    }
 }
 
 /**
@@ -239,4 +264,10 @@ function endResizeMode() {
     // Return to 'none' cursor behavior
     document.body.style.cursor = 'none';
     imageContainer.style.cursor = 'none';
+    
+    // Restore outline if it was visible before
+    if (outlineVisible) {
+        clearDebugElements();
+        addDebugOutline(canvasRegion, 'red', 3, 1.0);
+    }
 }
