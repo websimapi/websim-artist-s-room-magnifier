@@ -9,9 +9,9 @@ let canvasShape = null; // Will store the canvas shape points for irregular shap
 
 async function generateAndSetImage() {
     try {
-        // Updated prompt to specifically request colored walls (not white)
+        // Updated prompt to emphasize PURE WHITE SOLID CANVAS
         const result = await websim.imageGen({
-          prompt: "HD hyper realistic artist room with deep blue walls and various art supplies like paints, brushes, palettes, and easels scattered around. In the center, there's a large, blank WHITE canvas on an easel. The canvas should be clearly defined and stand out from its surroundings. It might have an unusual or interesting shape. Soft, natural light illuminates the scene.",
+          prompt: "HD hyper realistic artist room with rich red walls and various art supplies like paints, brushes, and easels. In the center, there's a prominent, PURE SOLID WHITE canvas on an easel, with absolutely no markings, shadows or texture on the canvas surface. The canvas must be clearly defined with sharp boundaries against its surroundings. The entire room should have no other white elements besides the canvas.",
           aspect_ratio: "16:9", // Good for full screen
         });
         const imageUrl = result.url;
@@ -160,8 +160,8 @@ function detectCanvasRegion(img) {
         
         // Create a binary map of white-ish pixels
         const whiteMap = [];
-        const threshold = 150; // Even more lenient threshold to detect off-white areas
-        const brightnessThreshold = 180; // Lower brightness threshold for shadows and variations
+        const threshold = 200; // Higher threshold to specifically detect white
+        const colorVarianceThreshold = 20; // Lower for more strict white detection
         
         for (let y = 0; y < canvas.height; y++) {
             whiteMap[y] = [];
@@ -176,22 +176,20 @@ function detectCanvasRegion(img) {
                 const brightness = (r + g + b) / 3;
                 const colorVariance = Math.max(Math.abs(r - g), Math.abs(r - b), Math.abs(g - b));
                 
-                // More lenient criteria for what counts as white
+                // Stricter criteria for what counts as white
                 const isWhite = (
-                    // High RGB values
-                    (r > threshold && g > threshold && b > threshold) ||
-                    // High brightness with reasonable color balance
-                    (brightness > brightnessThreshold && colorVariance < 40) ||
-                    // Allow slightly colorful but very bright pixels (catches highlights)
-                    (brightness > 220 && colorVariance < 60)
+                    // High RGB values with low variance (closer to pure white)
+                    (r > threshold && g > threshold && b > threshold && colorVariance < colorVarianceThreshold) ||
+                    // Very high brightness with reasonable color balance
+                    (brightness > 240 && colorVariance < 15)
                 );
                 
                 whiteMap[y][x] = isWhite ? 1 : 0;
             }
         }
         
-        // Apply more aggressive smoothing to fill gaps and connect components
-        smoothWhiteMap(whiteMap, canvas.width, canvas.height, 2);
+        // Apply smoothing to fill small gaps
+        smoothWhiteMap(whiteMap, canvas.width, canvas.height, 1);
         
         // Try to find canvas using connected component analysis first
         const canvasComponents = findCanvasComponents(whiteMap, canvas.width, canvas.height);
@@ -233,8 +231,8 @@ function detectCanvasRegion(img) {
                 height: (maxY - minY) * scaleY
             };
             
-            // Add visualization for debugging (can be removed in production)
-            visualizeCanvasShape(canvasShape, canvasRegion);
+            // Visualize only the polygon shape
+            visualizeCanvasShape(canvasShape);
         } else {
             // Fallback to the original rectangle detection method
             const result = findLargestWhiteRectangle(whiteMap, canvas.width, canvas.height);
@@ -254,10 +252,11 @@ function detectCanvasRegion(img) {
                     height: result.height * scaleY
                 };
                 
-                // Add visualization for debugging (can be removed in production)
+                // Add visualization - only rectangle in this case
                 const debugOutline = document.createElement('div');
+                debugOutline.className = 'canvas-visualization';
                 debugOutline.style.position = 'absolute';
-                debugOutline.style.border = '2px dashed red';
+                debugOutline.style.border = '2px dashed green';
                 debugOutline.style.left = canvasRegion.x + 'px';
                 debugOutline.style.top = canvasRegion.y + 'px';
                 debugOutline.style.width = canvasRegion.width + 'px';
@@ -370,22 +369,10 @@ function findCanvasComponents(whiteMap, width, height) {
     return components;
 }
 
-function visualizeCanvasShape(points, region) {
+function visualizeCanvasShape(points) {
     // Remove any previous visualizations
     const existingVisualizations = document.querySelectorAll('.canvas-visualization');
     existingVisualizations.forEach(el => el.remove());
-    
-    // Create div for the bounding box
-    const boundingBox = document.createElement('div');
-    boundingBox.className = 'canvas-visualization';
-    boundingBox.style.position = 'absolute';
-    boundingBox.style.border = '2px dashed red';
-    boundingBox.style.left = region.x + 'px';
-    boundingBox.style.top = region.y + 'px';
-    boundingBox.style.width = region.width + 'px';
-    boundingBox.style.height = region.height + 'px';
-    boundingBox.style.pointerEvents = 'none';
-    imageContainer.appendChild(boundingBox);
     
     // Create an SVG to visualize the actual shape
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -396,7 +383,7 @@ function visualizeCanvasShape(points, region) {
     const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
     const pointsString = points.map(p => `${p.x},${p.y}`).join(' ');
     polygon.setAttribute("points", pointsString);
-    polygon.setAttribute("style", "fill: rgba(0, 255, 0, 0.2); stroke: green; stroke-width: 1;");
+    polygon.setAttribute("style", "fill: rgba(0, 0, 0, 0); stroke: green; stroke-width: 2;");
     
     svg.appendChild(polygon);
     imageContainer.appendChild(svg);
@@ -496,8 +483,9 @@ function fallbackCanvasDetection() {
     
     console.log("Using fallback canvas region:", canvasRegion);
     
-    // Add visualization for the fallback region
+    // Add visualization for the fallback region - only one outline
     const debugOutline = document.createElement('div');
+    debugOutline.className = 'canvas-visualization';
     debugOutline.style.position = 'absolute';
     debugOutline.style.border = '2px dashed orange';
     debugOutline.style.left = canvasRegion.x + 'px';
