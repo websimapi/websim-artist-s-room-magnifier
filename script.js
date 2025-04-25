@@ -593,8 +593,9 @@ function startResizeMode() {
     resizeControls.style.left = (canvasRegion.x + canvasRegion.width - 80) + 'px';
     resizeControls.style.top = (canvasRegion.y + canvasRegion.height - 40) + 'px';
     
-    // Disable magnifier during resize
+    // Show normal cursor during resize mode instead of hiding it
     document.body.style.cursor = 'default';
+    imageContainer.style.cursor = 'default';
 }
 
 function startResize(e) {
@@ -719,8 +720,9 @@ function endResizeMode() {
     // Hide resize controls
     resizeControls.style.display = 'none';
     
-    // Return to normal cursor behavior
+    // Return to 'none' cursor behavior
     document.body.style.cursor = 'none';
+    imageContainer.style.cursor = 'none';
 }
 
 // Event listeners
