@@ -54,8 +54,8 @@ export function moveMagnifier(e) {
         return;
     }
 
-    // Not over canvas, show magnifier and hide brush cursor
-    document.body.style.cursor = 'none';
+    // Not over canvas, show normal cursor and magnifier
+    document.body.style.cursor = 'auto';
 
     // Position the magnifier element centered on the cursor
     magnifier.style.left = `${clientX}px`;

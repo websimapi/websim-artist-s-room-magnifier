@@ -257,13 +257,20 @@ function endResizeMode() {
     // Hide resize controls
     resizeControls.style.display = 'none';
     
-    // Return to 'none' cursor behavior
-    document.body.style.cursor = 'none';
-    imageContainer.style.cursor = 'none';
+    // Return to normal cursor behavior (not 'none')
+    document.body.style.cursor = 'auto';
+    imageContainer.style.cursor = 'auto';
     
     // Restore outline if it was visible before
     if (outlineVisible) {
         clearDebugElements();
         addDebugOutline(canvasRegion, 'red', 3, 1.0);
     }
+    
+    // Trigger a mousemove event to update cursor based on position
+    const event = new MouseEvent('mousemove', {
+        clientX: window.event ? window.event.clientX : 0,
+        clientY: window.event ? window.event.clientY : 0
+    });
+    document.dispatchEvent(event);
 }
