@@ -11,12 +11,9 @@ body, html {
 }
 
 #image-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
     position: relative;
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
+    height: 100%;
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -105,10 +102,56 @@ body, html {
     background-color: #45a049;
 }
 
-.debug-outline-svg {
+/* Tool Belt Styling */
+#tool-belt {
     position: absolute;
-    left: 0; top: 0;
-    width: 100%; height: 100%;
-    pointer-events: none;
-    z-index: 1000;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 10px;
+    background-color: rgba(255, 255, 255, 0.8);
+    border-radius: 8px;
+    padding: 10px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+    z-index: 900;
+}
+
+.tool-slot {
+    width: 50px;
+    height: 50px;
+    border-radius: 6px;
+    background-color: white;
+    border: 2px solid #ddd;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tool-slot:hover {
+    border-color: #aaa;
+    background-color: #f9f9f9;
+}
+
+.tool-slot.active {
+    border-color: #4CAF50;
+    background-color: #f0f9f0;
+}
+
+.tool-slot svg {
+    width: 28px;
+    height: 28px;
+    fill: #555;
+    transition: fill 0.2s ease;
+}
+
+.tool-slot:hover svg {
+    fill: #333;
+}
+
+.tool-slot.active svg {
+    fill: #4CAF50;
 }

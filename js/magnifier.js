@@ -33,6 +33,12 @@ export function moveMagnifier(e) {
     // Skip if we're resizing
     if (window.isResizing) return;
     
+    // If brush tool is active, don't show magnifier
+    if (window.activeTool === 'brush') {
+        magnifier.style.display = 'none';
+        return;
+    }
+    
     // Get cursor position within the viewport
     const clientX = e.clientX;
     const clientY = e.clientY;
@@ -48,28 +54,38 @@ export function moveMagnifier(e) {
 
     // Check if cursor is over the canvas
     if (isPointInCanvas(x, y)) {
-        // Hide magnifier and show brush cursor
-        magnifier.style.display = 'none';
-        document.body.style.cursor = 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 24 24\'%3E%3Cpath fill=\'%23000000\' d=\'M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z\'/%3E%3C/svg%3E") 0 24, auto';
-        // Always ensure cursor is correct when over canvas
-        imageContainer.style.cursor = document.body.style.cursor;
-        return;
+        // Only show the brush cursor when in canvas if magnifier tool is not active
+        if (window.activeTool !== 'magnifier') {
+            // Hide magnifier and show brush cursor
+            magnifier.style.display = 'none';
+            document.body.style.cursor = 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 24 24\'%3E%3Cpath fill=\'%23000000\' d=\'M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z\'/%3E%3C/svg%3E") 0 24, auto';
+            imageContainer.style.cursor = document.body.style.cursor;
+            return;
+        }
     }
 
-    // Not over canvas, show normal cursor and magnifier
-    document.body.style.cursor = 'auto';
-    imageContainer.style.cursor = 'auto';
+    // Not over canvas or magnifier tool active, show normal cursor
+    if (window.activeTool !== 'brush') {
+        document.body.style.cursor = 'auto';
+        imageContainer.style.cursor = 'auto';
+    }
 
-    // Position the magnifier element centered on the cursor
-    magnifier.style.left = `${clientX}px`;
-    magnifier.style.top = `${clientY}px`;
+    // Only show magnifier if we're using the magnifier tool
+    if (window.activeTool === 'magnifier') {
+        // Position the magnifier element centered on the cursor
+        magnifier.style.left = `${clientX}px`;
+        magnifier.style.top = `${clientY}px`;
 
-    // Calculate the background position for the magnifier
-    const bgX = -(x * zoomLevel - magnifier.offsetWidth / 2);
-    const bgY = -(y * zoomLevel - magnifier.offsetHeight / 2);
+        // Calculate the background position for the magnifier
+        const bgX = -(x * zoomLevel - magnifier.offsetWidth / 2);
+        const bgY = -(y * zoomLevel - magnifier.offsetHeight / 2);
 
-    magnifier.style.backgroundPosition = `${bgX}px ${bgY}px`;
+        magnifier.style.backgroundPosition = `${bgX}px ${bgY}px`;
 
-    // Show the magnifier
-    magnifier.style.display = 'block';
+        // Show the magnifier
+        magnifier.style.display = 'block';
+    } else {
+        // Hide the magnifier for other tools
+        magnifier.style.display = 'none';
+    }
 }

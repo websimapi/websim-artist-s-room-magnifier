@@ -1,17 +1,13 @@
-import { addDebugOutline, setOriginalImageDimensions } from './debug.js';
+import { addDebugOutline } from './debug.js';
 
 // Shared state
 export let canvasRegion = null;
-export let canvasRegionPercent = null; // Store as percentages for perfect scaling
 
 /**
  * Detects the canvas region in an image
  */
 export function detectCanvasRegion(img) {
     try {
-        // Store original image dimensions for scaling calculations
-        setOriginalImageDimensions(img.width, img.height);
-        
         // 1. Draw image to canvas
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
@@ -140,18 +136,10 @@ export function detectCanvasRegion(img) {
             width: (bestCanvasRegion.maxX - bestCanvasRegion.minX + 1) * scaleX,
             height: (bestCanvasRegion.maxY - bestCanvasRegion.minY + 1) * scaleY,
         };
-        
-        // Store as percentages for perfect scaling during window resizes
-        canvasRegionPercent = {
-            x: canvasRegion.x / containerRect.width,
-            y: canvasRegion.y / containerRect.height,
-            width: canvasRegion.width / containerRect.width,
-            height: canvasRegion.height / containerRect.height
-        };
 
         // Show debug outline
         addDebugOutline(canvasRegion, 'red', 3, 1.0);
-        console.log('Canvas detected:', canvasRegion, canvasRegionPercent);
+        console.log('Canvas detected:', canvasRegion, bestCanvasRegion);
 
     } catch (e) {
         console.error("Canvas detection error", e);
@@ -323,37 +311,10 @@ export function fallbackCanvasDetection() {
         height: height
     };
     
-    // Store as percentages for perfect scaling
-    canvasRegionPercent = {
-        x: canvasRegion.x / containerRect.width,
-        y: canvasRegion.y / containerRect.height,
-        width: canvasRegion.width / containerRect.width,
-        height: canvasRegion.height / containerRect.height
-    };
-    
-    console.log("Using fallback canvas region:", canvasRegion, canvasRegionPercent);
+    console.log("Using fallback canvas region:", canvasRegion);
     
     // Add visualization for the fallback region
     addDebugOutline(canvasRegion, 'orange', 2);
-}
-
-/**
- * Updates canvas region based on container dimensions
- */
-export function updateCanvasRegionFromPercent() {
-    if (!canvasRegionPercent) return;
-    
-    const imageContainer = document.getElementById('image-container');
-    const containerRect = imageContainer.getBoundingClientRect();
-    
-    canvasRegion = {
-        x: canvasRegionPercent.x * containerRect.width,
-        y: canvasRegionPercent.y * containerRect.height,
-        width: canvasRegionPercent.width * containerRect.width,
-        height: canvasRegionPercent.height * containerRect.height
-    };
-    
-    return canvasRegion;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { canvasRegion, canvasRegionPercent, updateCanvasRegionFromPercent, isPointInCanvas } from './canvasDetection.js';
+import { canvasRegion, isPointInCanvas } from './canvasDetection.js';
 import { clearDebugElements, addDebugOutline } from './debug.js';
 
 // Resize state variables
@@ -9,9 +9,6 @@ let activeHandle = null;
 let startX, startY, startWidth, startHeight, startLeft, startTop;
 let outlineVisible = true; // Track outline visibility state
 
-// Track resize position as percentages for perfect scaling
-let resizeOutlinePercent = null;
-
 /**
  * Sets up resize tools and context menu
  */
@@ -21,20 +18,8 @@ export function setupResizeTools() {
     document.addEventListener('mousemove', (e) => {
         window.lastKnownMousePosition = { x: e.clientX, y: e.clientY };
     });
-
-    // NEW: Keep outline in sync with container scaling
-    const imageContainer = document.getElementById('image-container');
-    imageContainer.addEventListener('imagecontainer-resize', () => {
-        // Update canvas region from percentage data before adjusting outlines
-        updateCanvasRegionFromPercent();
-        adjustResizeOutlineToContainer();
-        
-        if (outlineVisible && canvasRegion) {
-            clearDebugElements();
-            addDebugOutline(canvasRegion, 'red', 3, 1.0);
-        }
-    });
     
+    const imageContainer = document.getElementById('image-container');
     const contextMenu = document.getElementById('context-menu');
     const resizeOption = document.getElementById('resize-option');
     const toggleOutline = document.getElementById('toggle-outline');
@@ -118,17 +103,11 @@ export function setupResizeTools() {
             width: rect.width,
             height: rect.height
         };
+        
+        // Update the shared canvasRegion reference
         Object.assign(canvasRegion, newCanvasRegion);
-
-        // Store the region as percentages for perfect scaling
-        canvasRegionPercent = {
-            x: canvasRegion.x / containerRect.width,
-            y: canvasRegion.y / containerRect.height,
-            width: canvasRegion.width / containerRect.width,
-            height: canvasRegion.height / containerRect.height
-        };
-
-        console.log('Canvas region updated:', canvasRegion, canvasRegionPercent);
+        
+        console.log('Canvas region updated:', canvasRegion);
         
         // Clean up resize elements and handle outline visibility
         endResizeMode();
@@ -139,35 +118,6 @@ export function setupResizeTools() {
         contextMenu.style.display = 'none';
         toggleOutlineVisibility();
     });
-}
-
-/**
- * Ensures the resize outline stays in correct position/scale when container changes.
- */
-function adjustResizeOutlineToContainer() {
-    if (resizeOutlinePercent && resizeOutline) {
-        const imageContainer = document.getElementById('image-container');
-        const containerRect = imageContainer.getBoundingClientRect();
-        
-        // Calculate position from percentages
-        const x = resizeOutlinePercent.x * containerRect.width;
-        const y = resizeOutlinePercent.y * containerRect.height;
-        const width = resizeOutlinePercent.width * containerRect.width;
-        const height = resizeOutlinePercent.height * containerRect.height;
-        
-        // Update outline position
-        resizeOutline.style.left = x + 'px';
-        resizeOutline.style.top = y + 'px';
-        resizeOutline.style.width = width + 'px';
-        resizeOutline.style.height = height + 'px';
-        
-        // Update resize controls position
-        const resizeControls = document.getElementById('resize-controls');
-        if (resizeControls.style.display !== 'none') {
-            resizeControls.style.left = (x + width - 80) + 'px';
-            resizeControls.style.top = (y + height - 40) + 'px';
-        }
-    }
 }
 
 /**
@@ -194,9 +144,6 @@ function startResizeMode() {
     const imageContainer = document.getElementById('image-container');
     const resizeControls = document.getElementById('resize-controls');
     
-    // Update canvas region from percentages in case window has been resized
-    updateCanvasRegionFromPercent();
-    
     isResizing = true;
     
     // Create a resizable outline based on the current canvas region
@@ -210,16 +157,7 @@ function startResizeMode() {
     resizeOutline.style.pointerEvents = 'none';
     resizeOutline.style.zIndex = '999';
     imageContainer.appendChild(resizeOutline);
-
-    // Store as percentages for perfect scaling
-    const containerRect = imageContainer.getBoundingClientRect();
-    resizeOutlinePercent = {
-        x: canvasRegion.x / containerRect.width,
-        y: canvasRegion.y / containerRect.height,
-        width: canvasRegion.width / containerRect.width,
-        height: canvasRegion.height / containerRect.height
-    };
-
+    
     // Add resize handles
     const handlePositions = [
         'top-left', 'top', 'top-right', 
@@ -325,14 +263,6 @@ function doResize(e) {
     resizeOutline.style.height = newHeight + 'px';
     resizeOutline.style.left = newLeft + 'px';
     resizeOutline.style.top = newTop + 'px';
-
-    // Store as percentages for perfect scaling
-    resizeOutlinePercent = {
-        x: newLeft / containerRect.width,
-        y: newTop / containerRect.height,
-        width: newWidth / containerRect.width,
-        height: newHeight / containerRect.height
-    };
     
     // Update submit button position
     resizeControls.style.left = (newLeft + newWidth - 80) + 'px';
@@ -354,7 +284,7 @@ function stopResize() {
 function endResizeMode() {
     const imageContainer = document.getElementById('image-container');
     const resizeControls = document.getElementById('resize-controls');
-
+    
     // Remove resize handles and outline
     resizeHandles.forEach(handle => {
         if (handle.parentNode) {
@@ -379,14 +309,14 @@ function endResizeMode() {
     if (outlineVisible) {
         clearDebugElements();
         addDebugOutline(canvasRegion, 'red', 3, 1.0);
-    } else {
-        clearDebugElements(); // make sure it's not shown if not desired
     }
     
     // Important: Set isResizing to false BEFORE dispatching mousemove event
+    // so the magnifier logic works correctly
     isResizing = false;
     
     // Get current mouse position for accurate event triggering
+    // Use a more reliable method than window.event
     const lastMousePosition = window.lastKnownMousePosition || { x: 0, y: 0 };
     
     // Trigger a mousemove event to update cursor based on position
