@@ -1,6 +1,8 @@
 import { generateAndSetImage } from './imageUtils.js';
 import { setupMagnifier } from './magnifier.js';
 import { setupResizeTools } from './resizeTools.js';
+import { updateCanvasRegionOnResize } from './canvasDetection.js';
+import { clearDebugElements, addDebugOutline } from './debug.js';
 
 // Initialize components when the script loads
 document.addEventListener('DOMContentLoaded', () => {
@@ -15,6 +17,10 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Handle window resize events
     window.addEventListener('resize', () => {
+        // Recalculate and update the canvas region position
+        updateCanvasRegionOnResize();
+        
+        // Update magnifier background size
         const magnifier = document.getElementById('magnifier');
         const imageContainer = document.getElementById('image-container');
         

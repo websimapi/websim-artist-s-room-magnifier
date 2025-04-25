@@ -1,4 +1,4 @@
-import { canvasRegion, isPointInCanvas } from './canvasDetection.js';
+import { canvasRegion, isPointInCanvas, storeCanvasProportions, outlineVisible } from './canvasDetection.js';
 import { clearDebugElements, addDebugOutline } from './debug.js';
 
 // Resize state variables
@@ -7,7 +7,6 @@ let resizeHandles = [];
 let resizeOutline = null;
 let activeHandle = null;
 let startX, startY, startWidth, startHeight, startLeft, startTop;
-let outlineVisible = true; // Track outline visibility state
 
 /**
  * Sets up resize tools and context menu
@@ -124,6 +123,7 @@ export function setupResizeTools() {
  * Toggles the visibility of the canvas outline
  */
 function toggleOutlineVisibility() {
+    // Use imported outlineVisible
     outlineVisible = !outlineVisible;
     clearDebugElements();
     
@@ -305,18 +305,19 @@ function endResizeMode() {
     document.body.style.cursor = 'auto';
     imageContainer.style.cursor = 'auto';
     
+    // Store the new canvas proportions for proper resizing
+    storeCanvasProportions();
+    
     // Restore outline if it was visible before
     if (outlineVisible) {
         clearDebugElements();
         addDebugOutline(canvasRegion, 'red', 3, 1.0);
     }
     
-    // Important: Set isResizing to false BEFORE dispatching mousemove event
-    // so the magnifier logic works correctly
+    // Set isResizing to false BEFORE dispatching mousemove event
     isResizing = false;
     
     // Get current mouse position for accurate event triggering
-    // Use a more reliable method than window.event
     const lastMousePosition = window.lastKnownMousePosition || { x: 0, y: 0 };
     
     // Trigger a mousemove event to update cursor based on position
