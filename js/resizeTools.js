@@ -28,15 +28,55 @@ export function setupResizeTools() {
         // Use the imported isPointInCanvas function
         if (isPointInCanvas(x, y)) {
             e.preventDefault();
+            
+            // Position menu but ensure it stays in viewport
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            
+            // Make sure menu is visible to calculate dimensions
             contextMenu.style.display = 'block';
-            contextMenu.style.left = `${e.clientX}px`;
-            contextMenu.style.top = `${e.clientY}px`;
+            const menuWidth = contextMenu.offsetWidth;
+            const menuHeight = contextMenu.offsetHeight;
+            
+            // Calculate position to keep menu in viewport
+            let menuX = e.clientX;
+            let menuY = e.clientY;
+            
+            if (menuX + menuWidth > viewportWidth) {
+                menuX = viewportWidth - menuWidth - 5;
+            }
+            
+            if (menuY + menuHeight > viewportHeight) {
+                menuY = viewportHeight - menuHeight - 5;
+            }
+            
+            contextMenu.style.left = `${menuX}px`;
+            contextMenu.style.top = `${menuY}px`;
+            
+            // Focus the menu for keyboard navigation
+            contextMenu.tabIndex = -1;
+            contextMenu.focus();
         }
     });
 
+    // Close context menu on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && contextMenu.style.display === 'block') {
+            contextMenu.style.display = 'none';
+        }
+    });
+
+    // Prevent menu from closing when clicking on the menu itself
+    contextMenu.addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
+
     // Hide context menu when clicking elsewhere
-    document.addEventListener('click', () => {
-        contextMenu.style.display = 'none';
+    document.addEventListener('click', (e) => {
+        // Don't hide if clicking on the menu itself
+        if (!contextMenu.contains(e.target)) {
+            contextMenu.style.display = 'none';
+        }
     });
 
     // Resize option click handler
