@@ -1,5 +1,5 @@
-import { canvasRegion, isPointInCanvas, updateCanvasRegionFromResize } from './canvasDetection.js';
-import { clearDebugElements, addDebugOutline, updateOutlinePosition } from './debug.js';
+import { canvasRegion, isPointInCanvas, updateCanvasOutlinePosition } from './canvasDetection.js';
+import { clearDebugElements, addDebugOutline } from './debug.js';
 
 // Resize state variables
 export let isResizing = false;
@@ -7,7 +7,7 @@ let resizeHandles = [];
 let resizeOutline = null;
 let activeHandle = null;
 let startX, startY, startWidth, startHeight, startLeft, startTop;
-let outlineVisible = true; // Track outline visibility state
+export let outlineVisible = true; // Track outline visibility state
 
 /**
  * Sets up resize tools and context menu
@@ -93,6 +93,23 @@ export function setupResizeTools() {
     
     // Submit resize button handler
     submitResizeBtn.addEventListener('click', () => {
+        const rect = resizeOutline.getBoundingClientRect();
+        const containerRect = imageContainer.getBoundingClientRect();
+        
+        // Update canvas region with new dimensions
+        const newCanvasRegion = {
+            x: rect.left - containerRect.left,
+            y: rect.top - containerRect.top,
+            width: rect.width,
+            height: rect.height
+        };
+        
+        // Update the shared canvasRegion reference
+        Object.assign(canvasRegion, newCanvasRegion);
+        
+        console.log('Canvas region updated:', canvasRegion);
+        
+        // Clean up resize elements and handle outline visibility
         endResizeMode();
     });
     
@@ -101,6 +118,33 @@ export function setupResizeTools() {
         contextMenu.style.display = 'none';
         toggleOutlineVisibility();
     });
+    
+    // Add window resize handler to update resize controls if active
+    window.addEventListener('resize', () => {
+        if (isResizing && resizeOutline) {
+            updateResizeControlsPosition();
+        }
+    });
+}
+
+/**
+ * Updates resize controls position based on current container dimensions
+ */
+function updateResizeControlsPosition() {
+    if (!resizeOutline) return;
+    
+    const imageContainer = document.getElementById('image-container');
+    const resizeControls = document.getElementById('resize-controls');
+    
+    // Update the outline position relative to the canvas region
+    resizeOutline.style.left = canvasRegion.x + 'px';
+    resizeOutline.style.top = canvasRegion.y + 'px';
+    resizeOutline.style.width = canvasRegion.width + 'px';
+    resizeOutline.style.height = canvasRegion.height + 'px';
+    
+    // Update submit button position
+    resizeControls.style.left = (canvasRegion.x + canvasRegion.width - 80) + 'px';
+    resizeControls.style.top = (canvasRegion.y + canvasRegion.height - 40) + 'px';
 }
 
 /**
@@ -118,6 +162,9 @@ function toggleOutlineVisibility() {
     if (outlineVisible && canvasRegion) {
         addDebugOutline(canvasRegion, 'red', 3, 1.0);
     }
+    
+    // Make this state globally accessible
+    window.outlineVisible = outlineVisible;
 }
 
 /**
@@ -128,9 +175,6 @@ function startResizeMode() {
     const resizeControls = document.getElementById('resize-controls');
     
     isResizing = true;
-    
-    // Ensure we have the latest coordinates
-    updateCanvasRegionCoordinates();
     
     // Create a resizable outline based on the current canvas region
     resizeOutline = document.createElement('div');
@@ -279,18 +323,7 @@ function endResizeMode() {
     });
     resizeHandles = [];
     
-    // Get the final dimensions of the resized outline
     if (resizeOutline && resizeOutline.parentNode) {
-        const rect = {
-            x: parseFloat(resizeOutline.style.left),
-            y: parseFloat(resizeOutline.style.top),
-            width: parseFloat(resizeOutline.style.width),
-            height: parseFloat(resizeOutline.style.height)
-        };
-        
-        // Update the canvas region with new dimensions, including relative coordinates
-        updateCanvasRegionFromResize(rect);
-        
         resizeOutline.parentNode.removeChild(resizeOutline);
     }
     resizeOutline = null;
@@ -301,6 +334,11 @@ function endResizeMode() {
     // Reset cursor to default first
     document.body.style.cursor = 'auto';
     imageContainer.style.cursor = 'auto';
+    
+    // After resizing, update the original canvas region for future scaling
+    if (window.originalCanvasRegion) {
+        window.originalCanvasRegion = { ...canvasRegion };
+    }
     
     // Restore outline if it was visible before
     if (outlineVisible) {
@@ -325,9 +363,4 @@ function endResizeMode() {
         clientY: lastMousePosition.y
     });
     document.dispatchEvent(event);
-}
-
-function updateCanvasRegionCoordinates() {
-    // Implementation of updateCanvasRegionCoordinates is missing in the plan,
-    // so it's left empty here. You should implement it according to your needs.
 }

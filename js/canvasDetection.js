@@ -1,7 +1,74 @@
 import { addDebugOutline } from './debug.js';
 
-// Shared state with both absolute and relative coordinates
+// Shared state
 export let canvasRegion = null;
+let originalContainerSize = null;
+let originalCanvasRegion = null;
+let outlineElement = null;
+
+/**
+ * Sets up the responsive outline functionality
+ */
+export function setupResponsiveOutline() {
+    const imageContainer = document.getElementById('image-container');
+    
+    // Store initial container dimensions when canvas is first detected
+    if (canvasRegion && !originalContainerSize) {
+        originalContainerSize = {
+            width: imageContainer.offsetWidth,
+            height: imageContainer.offsetHeight
+        };
+        originalCanvasRegion = { ...canvasRegion };
+    }
+    
+    // Set up ResizeObserver to detect container size changes
+    const resizeObserver = new ResizeObserver(entries => {
+        for (const entry of entries) {
+            if (entry.target === imageContainer) {
+                updateCanvasOutlinePosition();
+            }
+        }
+    });
+    
+    // Start observing the image container
+    resizeObserver.observe(imageContainer);
+}
+
+/**
+ * Updates the canvas outline position based on container size changes
+ */
+export function updateCanvasOutlinePosition() {
+    if (!canvasRegion || !originalCanvasRegion || !originalContainerSize) return;
+    
+    const imageContainer = document.getElementById('image-container');
+    const currentWidth = imageContainer.offsetWidth;
+    const currentHeight = imageContainer.offsetHeight;
+    
+    // Calculate scale factors
+    const scaleX = currentWidth / originalContainerSize.width;
+    const scaleY = currentHeight / originalContainerSize.height;
+    
+    // Update current canvas region with scaled values
+    canvasRegion.x = originalCanvasRegion.x * scaleX;
+    canvasRegion.y = originalCanvasRegion.y * scaleY;
+    canvasRegion.width = originalCanvasRegion.width * scaleX;
+    canvasRegion.height = originalCanvasRegion.height * scaleY;
+    
+    // Update outline if it exists and should be visible
+    const isOutlineVisible = window.outlineVisible !== false; // Default to true if not set
+    
+    if (isOutlineVisible) {
+        // Remove existing outline if any
+        if (outlineElement && outlineElement.parentNode) {
+            outlineElement.parentNode.removeChild(outlineElement);
+        }
+        
+        // Create new outline with updated dimensions
+        outlineElement = addDebugOutline(canvasRegion, 'red', 3, 1.0);
+    }
+    
+    console.log('Canvas region updated with scale factors:', { scaleX, scaleY });
+}
 
 /**
  * Detects the canvas region in an image
@@ -124,44 +191,29 @@ export function detectCanvasRegion(img) {
             }
         }
 
-        // 5. Map region to screen coordinates and store both absolute and relative values
+        // 5. Map region to screen coordinates
         const imageContainer = document.getElementById('image-container');
         const containerRect = imageContainer.getBoundingClientRect();
+        const scaleX = containerRect.width / width;
+        const scaleY = containerRect.height / height;
         
-        // Calculate relative coordinates (percentages) based on original image size
-        const relMinX = bestCanvasRegion.minX / width;
-        const relMinY = bestCanvasRegion.minY / height;
-        const relWidth = (bestCanvasRegion.maxX - bestCanvasRegion.minX + 1) / width;
-        const relHeight = (bestCanvasRegion.maxY - bestCanvasRegion.minY + 1) / height;
-        
-        // Calculate absolute coordinates based on current container size
-        const absX = relMinX * containerRect.width;
-        const absY = relMinY * containerRect.height;
-        const absWidth = relWidth * containerRect.width;
-        const absHeight = relHeight * containerRect.height;
-        
-        // Store both absolute and relative values
         canvasRegion = {
-            // Absolute pixel coordinates (current)
-            x: absX,
-            y: absY,
-            width: absWidth,
-            height: absHeight,
-            
-            // Relative coordinates (percentages of container)
-            relX: relMinX,
-            relY: relMinY,
-            relWidth: relWidth,
-            relHeight: relHeight,
-            
-            // Original detection dimensions for reference
-            originalImageWidth: width,
-            originalImageHeight: height
+            x: bestCanvasRegion.minX * scaleX,
+            y: bestCanvasRegion.minY * scaleY,
+            width: (bestCanvasRegion.maxX - bestCanvasRegion.minX + 1) * scaleX,
+            height: (bestCanvasRegion.maxY - bestCanvasRegion.minY + 1) * scaleY,
         };
 
+        // Store original values for responsive scaling
+        originalContainerSize = {
+            width: containerRect.width,
+            height: containerRect.height
+        };
+        originalCanvasRegion = { ...canvasRegion };
+
         // Show debug outline
-        addDebugOutline(canvasRegion, 'red', 3, 1.0);
-        console.log('Canvas detected:', canvasRegion);
+        outlineElement = addDebugOutline(canvasRegion, 'red', 3, 1.0);
+        console.log('Canvas detected:', canvasRegion, bestCanvasRegion);
 
     } catch (e) {
         console.error("Canvas detection error", e);
@@ -312,83 +364,38 @@ function isValidCanvasRegion(region, imageWidth, imageHeight) {
 }
 
 /**
- * Updates canvas region absolute coordinates based on current container size
- */
-export function updateCanvasRegionCoordinates() {
-    if (!canvasRegion || !canvasRegion.relX) return;
-    
-    const imageContainer = document.getElementById('image-container');
-    const containerRect = imageContainer.getBoundingClientRect();
-    
-    // Update absolute coordinates based on current container size
-    canvasRegion.x = canvasRegion.relX * containerRect.width;
-    canvasRegion.y = canvasRegion.relY * containerRect.height;
-    canvasRegion.width = canvasRegion.relWidth * containerRect.width;
-    canvasRegion.height = canvasRegion.relHeight * containerRect.height;
-    
-    return canvasRegion;
-}
-
-/**
  * Fallback canvas detection when automated detection fails
  */
 export function fallbackCanvasDetection() {
     const imageContainer = document.getElementById('image-container');
     // Improved fallback: use a more realistic canvas size and position
     const containerRect = imageContainer.getBoundingClientRect();
+    const centerX = containerRect.width / 2;
+    const centerY = containerRect.height / 2;
     
-    // Define relative coordinates (percentages)
-    const relX = 0.3;  // 30% from the left
-    const relY = 0.25; // 25% from the top
-    const relWidth = 0.4;  // 40% of container width
-    const relHeight = 0.5; // 50% of container height
-    
-    // Calculate absolute coordinates
-    const absX = relX * containerRect.width;
-    const absY = relY * containerRect.height;
-    const absWidth = relWidth * containerRect.width;
-    const absHeight = relHeight * containerRect.height;
+    // Define a region that's 40% of the container width and 50% of the height
+    // with a slight upward shift as canvases are usually above the center
+    const width = containerRect.width * 0.4;
+    const height = containerRect.height * 0.5;
     
     canvasRegion = {
-        // Absolute coordinates
-        x: absX,
-        y: absY,
-        width: absWidth,
-        height: absHeight,
-        
-        // Relative coordinates
-        relX: relX,
-        relY: relY,
-        relWidth: relWidth,
-        relHeight: relHeight
+        x: centerX - width / 2,
+        y: centerY - height / 2 - containerRect.height * 0.05, // Shift up a bit
+        width: width,
+        height: height
     };
+    
+    // Store original values for responsive scaling
+    originalContainerSize = {
+        width: containerRect.width,
+        height: containerRect.height
+    };
+    originalCanvasRegion = { ...canvasRegion };
     
     console.log("Using fallback canvas region:", canvasRegion);
     
     // Add visualization for the fallback region
-    addDebugOutline(canvasRegion, 'orange', 2);
-}
-
-/**
- * Updates the canvas region when resizing manually
- */
-export function updateCanvasRegionFromResize(rect) {
-    if (!canvasRegion) return;
-    
-    const imageContainer = document.getElementById('image-container');
-    const containerRect = imageContainer.getBoundingClientRect();
-    
-    // Update both absolute and relative coordinates
-    canvasRegion.x = rect.x;
-    canvasRegion.y = rect.y;
-    canvasRegion.width = rect.width;
-    canvasRegion.height = rect.height;
-    
-    // Update relative coordinates
-    canvasRegion.relX = rect.x / containerRect.width;
-    canvasRegion.relY = rect.y / containerRect.height;
-    canvasRegion.relWidth = rect.width / containerRect.width;
-    canvasRegion.relHeight = rect.height / containerRect.height;
+    outlineElement = addDebugOutline(canvasRegion, 'orange', 2);
 }
 
 /**
@@ -396,9 +403,6 @@ export function updateCanvasRegionFromResize(rect) {
  */
 export function isPointInCanvas(x, y) {
     if (!canvasRegion) return false;
-    
-    // Ensure we have the most up-to-date coordinates
-    updateCanvasRegionCoordinates();
     
     return (
         x >= canvasRegion.x && 
