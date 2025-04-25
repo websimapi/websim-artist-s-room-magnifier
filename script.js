@@ -9,9 +9,9 @@ let canvasShape = null; // Will store the canvas shape points for irregular shap
 
 async function generateAndSetImage() {
     try {
-        // Updated prompt to emphasize PURE WHITE SOLID CANVAS
+        // Updated prompt to emphasize PURE WHITE SOLID CANVAS with clearer instructions
         const result = await websim.imageGen({
-          prompt: "HD hyper realistic artist room with rich red walls and various art supplies like paints, brushes, and easels. In the center, there's a prominent, PURE SOLID WHITE canvas on an easel, with absolutely no markings, shadows or texture on the canvas surface. The canvas must be clearly defined with sharp boundaries against its surroundings. The entire room should have no other white elements besides the canvas.",
+          prompt: "HD hyper realistic artist room with rich red walls and various art supplies like paints, brushes, and easels. In the center, there's a prominent, PURE SOLID WHITE canvas on an easel, with absolutely no markings on the canvas surface. The canvas must be perfectly white (RGB 255,255,255) with sharp boundaries against its surroundings. No other white elements should be in the room besides the canvas. The room should have good lighting but avoid strong reflections on the canvas.",
           aspect_ratio: "16:9", // Good for full screen
         });
         const imageUrl = result.url;
@@ -143,6 +143,10 @@ function loadImageWithUrl(url) {
 
 function detectCanvasRegion(img) {
     try {
+        // Clear any previous visualizations
+        const existingVisualizations = document.querySelectorAll('.canvas-visualization');
+        existingVisualizations.forEach(el => el.remove());
+        
         // Create a canvas to analyze the image
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
@@ -160,8 +164,9 @@ function detectCanvasRegion(img) {
         
         // Create a binary map of white-ish pixels
         const whiteMap = [];
-        const threshold = 200; // Higher threshold to specifically detect white
-        const colorVarianceThreshold = 20; // Lower for more strict white detection
+        // More lenient thresholds to detect near-white pixels
+        const threshold = 190; // Lower to catch more off-white pixels
+        const colorVarianceThreshold = 30; // Higher to allow more variance in white shades
         
         for (let y = 0; y < canvas.height; y++) {
             whiteMap[y] = [];
@@ -176,12 +181,14 @@ function detectCanvasRegion(img) {
                 const brightness = (r + g + b) / 3;
                 const colorVariance = Math.max(Math.abs(r - g), Math.abs(r - b), Math.abs(g - b));
                 
-                // Stricter criteria for what counts as white
+                // More lenient criteria for what counts as white
                 const isWhite = (
-                    // High RGB values with low variance (closer to pure white)
+                    // High RGB values with acceptable variance
                     (r > threshold && g > threshold && b > threshold && colorVariance < colorVarianceThreshold) ||
                     // Very high brightness with reasonable color balance
-                    (brightness > 240 && colorVariance < 15)
+                    (brightness > 230 && colorVariance < 25) ||
+                    // Very close to white
+                    (r > 245 && g > 245 && b > 245)
                 );
                 
                 whiteMap[y][x] = isWhite ? 1 : 0;
@@ -189,7 +196,7 @@ function detectCanvasRegion(img) {
         }
         
         // Apply smoothing to fill small gaps
-        smoothWhiteMap(whiteMap, canvas.width, canvas.height, 1);
+        smoothWhiteMap(whiteMap, canvas.width, canvas.height, 2); // Increased smoothing passes
         
         // Try to find canvas using connected component analysis first
         const canvasComponents = findCanvasComponents(whiteMap, canvas.width, canvas.height);
@@ -231,7 +238,7 @@ function detectCanvasRegion(img) {
                 height: (maxY - minY) * scaleY
             };
             
-            // Visualize only the polygon shape
+            // Visualize only the polygon shape with green outline
             visualizeCanvasShape(canvasShape);
         } else {
             // Fallback to the original rectangle detection method
@@ -252,7 +259,7 @@ function detectCanvasRegion(img) {
                     height: result.height * scaleY
                 };
                 
-                // Add visualization - only rectangle in this case
+                // Add visualization - only rectangle in this case with green outline
                 const debugOutline = document.createElement('div');
                 debugOutline.className = 'canvas-visualization';
                 debugOutline.style.position = 'absolute';
@@ -319,7 +326,7 @@ function findCanvasComponents(whiteMap, width, height) {
     const components = [];
     
     // Minimum area for a component to be considered a canvas
-    const MIN_AREA = width * height * 0.01; // At least 1% of image area
+    const MIN_AREA = width * height * 0.005; // Reduced to 0.5% of image area to catch smaller canvases
     
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
@@ -377,7 +384,7 @@ function visualizeCanvasShape(points) {
     // Create an SVG to visualize the actual shape
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.className = 'canvas-visualization';
-    svg.setAttribute("style", "position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;");
+    svg.setAttribute("style", "position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;");
     
     // Create a polygon from the points
     const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
@@ -465,6 +472,10 @@ function findLargestWhiteRectangle(whiteMap, width, height) {
 }
 
 function fallbackCanvasDetection() {
+    // Clear any previous visualizations first
+    const existingVisualizations = document.querySelectorAll('.canvas-visualization');
+    existingVisualizations.forEach(el => el.remove());
+    
     // Fallback method: define a reasonable canvas region in the center
     const containerRect = imageContainer.getBoundingClientRect();
     const centerX = containerRect.width / 2;
@@ -483,16 +494,17 @@ function fallbackCanvasDetection() {
     
     console.log("Using fallback canvas region:", canvasRegion);
     
-    // Add visualization for the fallback region - only one outline
+    // Add visualization for the fallback region with green outline (not orange)
     const debugOutline = document.createElement('div');
     debugOutline.className = 'canvas-visualization';
     debugOutline.style.position = 'absolute';
-    debugOutline.style.border = '2px dashed orange';
+    debugOutline.style.border = '2px dashed green';
     debugOutline.style.left = canvasRegion.x + 'px';
     debugOutline.style.top = canvasRegion.y + 'px';
     debugOutline.style.width = canvasRegion.width + 'px';
     debugOutline.style.height = canvasRegion.height + 'px';
     debugOutline.style.pointerEvents = 'none';
+    debugOutline.style.zIndex = '10';
     imageContainer.appendChild(debugOutline);
 }
 
@@ -537,12 +549,13 @@ function moveMagnifier(e) {
 
     // Get the size and position of the container
     const rect = imageContainer.getBoundingClientRect();
-    const containerWidth = rect.width;
-    const containerHeight = rect.height;
 
     // Calculate cursor position relative to the container
     const x = clientX - rect.left;
     const y = clientY - rect.top;
+
+    // Debug - log cursor position and whether it's in canvas (uncomment if needed)
+    // console.log(`Cursor at ${x},${y}, isInCanvas: ${isPointInCanvas(x, y)}`);
 
     // Check if cursor is over the canvas
     if (isPointInCanvas(x, y)) {
@@ -560,6 +573,8 @@ function moveMagnifier(e) {
     magnifier.style.top = `${clientY}px`;
 
     // Calculate the background position for the magnifier
+    const containerWidth = rect.width;
+    const containerHeight = rect.height;
     const bgX = -(x * zoomLevel - magnifierSize / 2);
     const bgY = -(y * zoomLevel - magnifierSize / 2);
 
