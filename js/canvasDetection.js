@@ -12,52 +12,32 @@ let canvasProportions = {
     heightPercent: 0
 };
 
-// NEW: Store last image input dimensions used for detection
-let detectedImageSize = { width: 0, height: 0 };
-
 /**
  * Updates the canvas region when window is resized
  */
 export function updateCanvasRegionOnResize() {
-    if (!canvasRegion || detectedImageSize.width === 0 || detectedImageSize.height === 0) return;
-
+    if (!canvasRegion) return;
+    
     const imageContainer = document.getElementById('image-container');
     const containerRect = imageContainer.getBoundingClientRect();
-
-    // Use the proportions to recalculate canvas region in pixels based on the new container size
-    canvasRegion.x = containerRect.width * canvasProportions.xPercent;
-    canvasRegion.y = containerRect.height * canvasProportions.yPercent;
-    canvasRegion.width = containerRect.width * canvasProportions.widthPercent;
-    canvasRegion.height = containerRect.height * canvasProportions.heightPercent;
-
-    // Remove and re-add the debug outline if visible
-    clearDebugElements();
-    if (outlineVisible) {
-        addDebugOutline(canvasRegion, 'red', 3, 1.0);
+    
+    // If we have stored proportions, use them to recalculate position
+    if (canvasProportions.widthPercent > 0) {
+        canvasRegion = {
+            x: Math.round(containerRect.width * canvasProportions.xPercent),
+            y: Math.round(containerRect.height * canvasProportions.yPercent),
+            width: Math.round(containerRect.width * canvasProportions.widthPercent),
+            height: Math.round(containerRect.height * canvasProportions.heightPercent)
+        };
+    } else {
+        // Calculate and store proportions on first resize
+        storeCanvasProportions();
     }
-
-    // Update any existing resize outline
-    updateResizeOutline();
-}
-
-/**
- * Updates the resize outline if currently in resize mode
- */
-function updateResizeOutline() {
-    const resizeOutline = document.querySelector('#image-container > div[style*="dashed"]');
-    const resizeControls = document.getElementById('resize-controls');
-
-    if (resizeOutline && canvasRegion) {
-        resizeOutline.style.left = `${canvasRegion.x}px`;
-        resizeOutline.style.top = `${canvasRegion.y}px`;
-        resizeOutline.style.width = `${canvasRegion.width}px`;
-        resizeOutline.style.height = `${canvasRegion.height}px`;
-
-        // Move resize controls
-        if (resizeControls.style.display !== 'none') {
-            resizeControls.style.left = (canvasRegion.x + canvasRegion.width - 80) + 'px';
-            resizeControls.style.top = (canvasRegion.y + canvasRegion.height - 40) + 'px';
-        }
+    
+    // Update the outline if it's visible
+    if (outlineVisible) {
+        clearDebugElements();
+        addDebugOutline(canvasRegion, 'red', 3, 1.0);
     }
 }
 
@@ -66,16 +46,18 @@ function updateResizeOutline() {
  */
 export function storeCanvasProportions() {
     if (!canvasRegion) return;
-
+    
     const imageContainer = document.getElementById('image-container');
     const containerRect = imageContainer.getBoundingClientRect();
-
+    
     canvasProportions = {
-        xPercent: canvasRegion.x / containerRect.width,
-        yPercent: canvasRegion.y / containerRect.height,
-        widthPercent: canvasRegion.width / containerRect.width,
-        heightPercent: canvasRegion.height / containerRect.height
+        xPercent: parseFloat((canvasRegion.x / containerRect.width).toFixed(6)),
+        yPercent: parseFloat((canvasRegion.y / containerRect.height).toFixed(6)),
+        widthPercent: parseFloat((canvasRegion.width / containerRect.width).toFixed(6)),
+        heightPercent: parseFloat((canvasRegion.height / containerRect.height).toFixed(6))
     };
+    
+    console.log('Stored canvas proportions:', canvasProportions);
 }
 
 /**
@@ -91,82 +73,107 @@ export function detectCanvasRegion(img) {
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-        // Store the dimensions the detection is based on
-        detectedImageSize.width = width;
-        detectedImageSize.height = height;
-
-        // 2. White pixel map
+        // 2. Create white binary map with preprocessing
         const whiteMap = [];
         let whitePixelCount = 0;
+        
+        // First pass: gather brightness statistics
         let brightnessSamples = [];
-        for (let y = 0; y < height; y += 5) {
+        for (let y = 0; y < height; y += 5) { // Sample every 5 pixels for speed
             for (let x = 0; x < width; x += 5) {
                 const i = (y * width + x) * 4;
                 const r = data[i], g = data[i + 1], b = data[i + 2];
                 brightnessSamples.push((r + g + b) / 3);
             }
         }
+        
+        // Sort and get threshold based on histogram
         brightnessSamples.sort((a, b) => b - a);
-        const topPercentileThreshold = brightnessSamples[Math.floor(brightnessSamples.length * 0.05)];
-
+        const topPercentileThreshold = brightnessSamples[Math.floor(brightnessSamples.length * 0.05)]; // Top 5% brightness
+        console.log("Brightness threshold:", topPercentileThreshold);
+        
+        // Create whiteness map
         for (let y = 0; y < height; y++) {
             whiteMap[y] = [];
             for (let x = 0; x < width; x++) {
                 const i = (y * width + x) * 4;
                 const r = data[i], g = data[i + 1], b = data[i + 2];
+                
+                // Use our improved white detection
                 if (isVeryWhite(r, g, b)) {
-                    whiteMap[y][x] = 1;
+                    whiteMap[y][x] = 1; 
                     whitePixelCount++;
                 } else {
                     whiteMap[y][x] = 0;
                 }
             }
         }
-
-        if (whitePixelCount < 100) {
+        
+        if (whitePixelCount < 100) { // More realistic minimum threshold
+            console.warn("Not enough white pixels detected:", whitePixelCount);
             fallbackCanvasDetection();
             return;
         }
 
-        // 3. Morphological ops and region finding (unchanged)
+        // 3. Apply morphological operations for noise reduction
+        // First, dilate to connect nearby white regions
         const dilatedMap = applyMorphologicalOperation(whiteMap, width, height, 'dilate', 3);
+        // Then erode to shrink back but with connections maintained
         const processedMap = applyMorphologicalOperation(dilatedMap, width, height, 'erode', 2);
+        
+        // 4. Find the largest white rectangle area
         const connectedRegions = findConnectedWhiteRegions(processedMap, width, height);
-
+        
         if (connectedRegions.length === 0) {
+            console.warn("No suitable white regions found");
             fallbackCanvasDetection();
             return;
         }
-
+        
+        // Sort by area (largest first)
         connectedRegions.sort((a, b) => b.area - a.area);
+        
+        // Find the most canvas-like region based on size, shape, and position
         let bestCanvasRegion = null;
         let bestScore = 0;
-
+        
         for (const region of connectedRegions) {
+            // Canvas is usually rectangular with aspect ratio between 0.6 and 1.6
             const wRect = region.maxX - region.minX + 1;
             const hRect = region.maxY - region.minY + 1;
-            const aspect = Math.max(wRect / hRect, hRect / wRect);
+            const aspect = Math.max(wRect/hRect, hRect/wRect);
+            
+            // Canvas is usually well-filled with white
             const fillRatio = region.area / (wRect * hRect);
-            const centerX = region.minX + wRect / 2;
-            const centerY = region.minY + hRect / 2;
-            const centerDistanceX = Math.abs(centerX - width / 2) / (width / 2);
-            const centerDistanceY = Math.abs(centerY - height / 2) / (height / 2);
+            
+            // Canvas position is usually centered in the frame
+            const centerX = region.minX + wRect/2;
+            const centerY = region.minY + hRect/2;
+            const centerDistanceX = Math.abs(centerX - width/2) / (width/2);
+            const centerDistanceY = Math.abs(centerY - height/2) / (height/2);
             const centerScore = 1 - (centerDistanceX + centerDistanceY) / 2;
+            
+            // Canvas should be a reasonable size
             const sizeRatio = (wRect * hRect) / (width * height);
             const sizeScore = sizeRatio > 0.05 && sizeRatio < 0.8 ? 1 : 0;
+            
+            // Calculate overall score
             const score = (
-                (aspect < 2 ? 1 : 0) * 0.3 +
-                (fillRatio > 0.75 ? 1 : 0) * 0.2 +
-                centerScore * 0.3 +
-                sizeScore * 0.2
+                (aspect < 2 ? 1 : 0) * 0.3 +     // Aspect ratio
+                (fillRatio > 0.75 ? 1 : 0) * 0.2 + // Fill ratio
+                centerScore * 0.3 +              // Center position
+                sizeScore * 0.2                  // Size score
             );
+            
             if (score > bestScore) {
                 bestScore = score;
                 bestCanvasRegion = region;
             }
         }
-
+        
         if (!bestCanvasRegion || bestScore < 0.5) {
+            console.warn("No high-scoring canvas region found:", bestScore);
+            // Try the largest region as fallback before giving up
             bestCanvasRegion = connectedRegions[0];
             if (!isValidCanvasRegion(bestCanvasRegion, width, height)) {
                 fallbackCanvasDetection();
@@ -174,38 +181,28 @@ export function detectCanvasRegion(img) {
             }
         }
 
-        // 5. Map region to normalized image proportions!
-        // Instead of mapping to current DOM px, save normalized positions
-        // relative to the detection image (NOT the container)
-        const imageX = bestCanvasRegion.minX;
-        const imageY = bestCanvasRegion.minY;
-        const imageW = bestCanvasRegion.maxX - bestCanvasRegion.minX + 1;
-        const imageH = bestCanvasRegion.maxY - bestCanvasRegion.minY + 1;
-
-        // Save px-accurate proportions to the original detection image
-        canvasProportions = {
-            xPercent: imageX / width,
-            yPercent: imageY / height,
-            widthPercent: imageW / width,
-            heightPercent: imageH / height
-        };
-
-        // Now map to DOM container in px
+        // 5. Map region to screen coordinates
         const imageContainer = document.getElementById('image-container');
         const containerRect = imageContainer.getBoundingClientRect();
-
+        const scaleX = containerRect.width / width;
+        const scaleY = containerRect.height / height;
+        
         canvasRegion = {
-            x: canvasProportions.xPercent * containerRect.width,
-            y: canvasProportions.yPercent * containerRect.height,
-            width: canvasProportions.widthPercent * containerRect.width,
-            height: canvasProportions.heightPercent * containerRect.height
+            x: bestCanvasRegion.minX * scaleX,
+            y: bestCanvasRegion.minY * scaleY,
+            width: (bestCanvasRegion.maxX - bestCanvasRegion.minX + 1) * scaleX,
+            height: (bestCanvasRegion.maxY - bestCanvasRegion.minY + 1) * scaleY,
         };
 
         // Show debug outline
-        clearDebugElements();
         addDebugOutline(canvasRegion, 'red', 3, 1.0);
+        console.log('Canvas detected:', canvasRegion, bestCanvasRegion);
+
+        // After setting canvasRegion, store the proportions
+        storeCanvasProportions();
 
     } catch (e) {
+        console.error("Canvas detection error", e);
         fallbackCanvasDetection();
     }
 }
@@ -357,29 +354,30 @@ function isValidCanvasRegion(region, imageWidth, imageHeight) {
  */
 export function fallbackCanvasDetection() {
     const imageContainer = document.getElementById('image-container');
+    // Improved fallback: use a more realistic canvas size and position
     const containerRect = imageContainer.getBoundingClientRect();
     const centerX = containerRect.width / 2;
     const centerY = containerRect.height / 2;
-
+    
+    // Define a region that's 40% of the container width and 50% of the height
+    // with a slight upward shift as canvases are usually above the center
     const width = containerRect.width * 0.4;
     const height = containerRect.height * 0.5;
-
-    canvasProportions = {
-        xPercent: (centerX - width / 2) / containerRect.width,
-        yPercent: (centerY - height / 2 - containerRect.height * 0.05) / containerRect.height,
-        widthPercent: width / containerRect.width,
-        heightPercent: height / containerRect.height
-    };
-
+    
     canvasRegion = {
-        x: canvasProportions.xPercent * containerRect.width,
-        y: canvasProportions.yPercent * containerRect.height,
-        width: canvasProportions.widthPercent * containerRect.width,
-        height: canvasProportions.heightPercent * containerRect.height
+        x: centerX - width / 2,
+        y: centerY - height / 2 - containerRect.height * 0.05, // Shift up a bit
+        width: width,
+        height: height
     };
-
-    clearDebugElements();
+    
+    console.log("Using fallback canvas region:", canvasRegion);
+    
+    // Add visualization for the fallback region
     addDebugOutline(canvasRegion, 'orange', 2);
+    
+    // After setting canvasRegion, store the proportions
+    storeCanvasProportions();
 }
 
 /**
@@ -387,10 +385,11 @@ export function fallbackCanvasDetection() {
  */
 export function isPointInCanvas(x, y) {
     if (!canvasRegion) return false;
+    
     return (
-        x >= canvasRegion.x &&
+        x >= canvasRegion.x && 
         x <= canvasRegion.x + canvasRegion.width &&
-        y >= canvasRegion.y &&
+        y >= canvasRegion.y && 
         y <= canvasRegion.y + canvasRegion.height
     );
 }

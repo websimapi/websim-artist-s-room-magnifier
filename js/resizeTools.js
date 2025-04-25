@@ -105,10 +105,9 @@ export function setupResizeTools() {
         
         // Update the shared canvasRegion reference
         Object.assign(canvasRegion, newCanvasRegion);
-
-        // Immediately update canvas normalized proportions for scaling with container
-        storeCanvasProportions();
-
+        
+        console.log('Canvas region updated:', canvasRegion);
+        
         // Clean up resize elements and handle outline visibility
         endResizeMode();
     });
@@ -259,15 +258,15 @@ function doResize(e) {
         }
     }
     
-    // Update the outline dimensions
-    resizeOutline.style.width = newWidth + 'px';
-    resizeOutline.style.height = newHeight + 'px';
-    resizeOutline.style.left = newLeft + 'px';
-    resizeOutline.style.top = newTop + 'px';
+    // Update the outline dimensions with rounded values for pixel-perfect positioning
+    resizeOutline.style.width = Math.round(newWidth) + 'px';
+    resizeOutline.style.height = Math.round(newHeight) + 'px';
+    resizeOutline.style.left = Math.round(newLeft) + 'px';
+    resizeOutline.style.top = Math.round(newTop) + 'px';
     
-    // Update submit button position
-    resizeControls.style.left = (newLeft + newWidth - 80) + 'px';
-    resizeControls.style.top = (newTop + newHeight - 40) + 'px';
+    // Update submit button position with rounded values
+    resizeControls.style.left = Math.round(newLeft + newWidth - 80) + 'px';
+    resizeControls.style.top = Math.round(newTop + newHeight - 40) + 'px';
 }
 
 /**
@@ -277,21 +276,6 @@ function stopResize() {
     document.removeEventListener('mousemove', doResize);
     document.removeEventListener('mouseup', stopResize);
     activeHandle = null;
-
-    // Immediately update canvas proportions after any resize action.
-    if (resizeOutline) {
-        const imageContainer = document.getElementById('image-container');
-        const containerRect = imageContainer.getBoundingClientRect();
-        const rect = resizeOutline.getBoundingClientRect();
-        
-        Object.assign(canvasRegion, {
-            x: rect.left - containerRect.left,
-            y: rect.top - containerRect.top,
-            width: rect.width,
-            height: rect.height
-        });
-        storeCanvasProportions(); // Ensure proportions used for px-perfect outline after resize
-    }
 }
 
 /**
@@ -321,8 +305,15 @@ function endResizeMode() {
     document.body.style.cursor = 'auto';
     imageContainer.style.cursor = 'auto';
     
-    // Make sure canvas proportions are stored for proper resizing
-    storeCanvasProportions();
+    // Store the new canvas proportions for proper resizing
+    // Make sure all dimensions are integers to avoid floating point issues
+    if (canvasRegion) {
+        canvasRegion.x = Math.round(canvasRegion.x);
+        canvasRegion.y = Math.round(canvasRegion.y);
+        canvasRegion.width = Math.round(canvasRegion.width);
+        canvasRegion.height = Math.round(canvasRegion.height);
+        storeCanvasProportions();
+    }
     
     // Restore outline if it was visible before
     if (outlineVisible) {
