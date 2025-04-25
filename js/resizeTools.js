@@ -265,8 +265,8 @@ function endResizeMode() {
     document.body.style.cursor = 'none';
     imageContainer.style.cursor = 'none';
     
-    // Restore outline if it was visible before
-    if (outlineVisible) {
+    // Only restore outline if it was visible before
+    if (outlineVisible && canvasRegion) {
         clearDebugElements();
         addDebugOutline(canvasRegion, 'red', 3, 1.0);
     }
