@@ -6,99 +6,13 @@ const zoomLevel = 3; // How much to zoom in
 let canvasRegion = null; // Will store the detected canvas coordinates
 let originalImageUrl = null; // Store the original URL
 let debugElements = []; // Track debug elements for cleanup
-let customBrushCursor = null; // Store the brush cursor URL
 
-async function generateAndProcessPaintbrushCursor() {
-    try {
-        // Generate paintbrush image with LLM
-        const result = await websim.imageGen({
-            prompt: "High-quality digital illustration of a traditional artist's paintbrush with bristles and wooden handle on a pure white background. The paintbrush should be viewed from a slight angle showing both the handle and bristles clearly. Clean, detailed, and professional looking.",
-            aspect_ratio: "1:1",
-        });
-        
-        const brushImageUrl = result.url;
-        console.log("Generated brush image:", brushImageUrl);
-        
-        // Process image to remove white background
-        const transparentBrushUrl = await makeBackgroundTransparent(brushImageUrl);
-        return transparentBrushUrl;
-    } catch (error) {
-        console.error("Error generating paintbrush cursor:", error);
-        return null; // Fallback to the SVG brush
-    }
-}
-
-async function makeBackgroundTransparent(imageUrl) {
-    try {
-        // Create an off-screen canvas to process the image
-        const img = await loadImagePromise(imageUrl);
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        canvas.width = img.width;
-        canvas.height = img.height;
-        
-        // Draw the image to the canvas
-        ctx.drawImage(img, 0, 0);
-        
-        // Get image data to manipulate pixels
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-        
-        // Loop through pixels and make white/near-white pixels transparent
-        for (let i = 0; i < data.length; i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            
-            // Check if the pixel is white or close to white
-            if (isCloseToWhite(r, g, b)) {
-                // Set alpha channel to 0 (transparent)
-                data[i + 3] = 0;
-            }
-        }
-        
-        // Put the modified image data back to the canvas
-        ctx.putImageData(imageData, 0, 0);
-        
-        // Convert canvas to a data URL
-        return canvas.toDataURL('image/png');
-    } catch (error) {
-        console.error("Error processing image:", error);
-        return null;
-    }
-}
-
-function isCloseToWhite(r, g, b) {
-    const threshold = 240; // Higher values will make fewer pixels transparent
-    const colorVariance = 15; // How much the colors can vary from each other
-    
-    // Check if it's very bright and low saturation (whitish)
-    return (
-        r > threshold && 
-        g > threshold && 
-        b > threshold &&
-        Math.abs(r - g) < colorVariance &&
-        Math.abs(r - b) < colorVariance &&
-        Math.abs(g - b) < colorVariance
-    );
-}
-
-function loadImagePromise(url) {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.crossOrigin = "Anonymous";
-        img.onload = () => resolve(img);
-        img.onerror = (err) => {
-            console.error("Failed to load image:", err);
-            reject(new Error("Failed to load image"));
-        };
-        img.src = url;
-        
-        // Set a timeout to avoid hanging forever
-        setTimeout(() => reject(new Error("Image load timeout")), 10000);
-    });
-}
+// State variables for resize functionality
+let isResizing = false;
+let resizingOutline = null;
+let activeHandle = null;
+let startX, startY;
+let startWidth, startHeight, startLeft, startTop;
 
 async function generateAndSetImage() {
     // Clear any existing debug elements
@@ -149,7 +63,7 @@ function clearDebugElements() {
     debugElements = [];
 }
 
-async function loadImageWithProxies(imageUrl) {
+function loadImageWithProxies(imageUrl) {
     // List of CORS proxies to try
     const corsProxies = [
         (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
@@ -163,7 +77,7 @@ async function loadImageWithProxies(imageUrl) {
 
     // Try to convert to blob URL as an alternative method
     try {
-        const blobUrl = await convertToBlobUrl(imageUrl);
+        const blobUrl = convertToBlobUrl(imageUrl);
         if (blobUrl) {
             console.log("Successfully converted to blob URL");
             loadImageWithUrl(blobUrl);
@@ -185,7 +99,7 @@ async function loadImageWithProxies(imageUrl) {
             img.crossOrigin = "Anonymous";
             
             // Use a promise to handle the async image loading
-            await new Promise((resolve, reject) => {
+            new Promise((resolve, reject) => {
                 img.onload = () => {
                     console.log(`Successfully loaded image with proxy #${i+1}`);
                     try {
@@ -218,20 +132,19 @@ async function loadImageWithProxies(imageUrl) {
     }
 }
 
-async function convertToBlobUrl(url) {
+function convertToBlobUrl(url) {
     try {
         // Try to fetch the image as a blob
-        const response = await fetch(url, {
+        return fetch(url, {
             mode: 'cors',
             cache: 'no-cache',
+        }).then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            return response.blob().then(blob => URL.createObjectURL(blob));
         });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const blob = await response.blob();
-        return URL.createObjectURL(blob);
     } catch (error) {
         console.warn("Blob URL conversion failed:", error);
         return null;
@@ -528,12 +441,248 @@ function addDebugOutline(region, color = 'red', thickness = 2, opacity = 1.0) {
     debugOutline.style.pointerEvents = 'none';
     debugOutline.style.zIndex = '1000';
     debugOutline.style.opacity = opacity;
+    debugOutline.id = 'canvas-outline';
     imageContainer.appendChild(debugOutline);
     
     // Add to the list of debug elements for cleanup
     debugElements.push(debugOutline);
     
+    // Add context menu event listener to the outline
+    setupCanvasInteractions(debugOutline, region);
+    
     return debugOutline;
+}
+
+function setupCanvasInteractions(outlineElement, region) {
+    // Create dropdown menu element if it doesn't exist
+    let canvasMenu = document.getElementById('canvas-menu');
+    if (!canvasMenu) {
+        canvasMenu = document.createElement('div');
+        canvasMenu.id = 'canvas-menu';
+        document.body.appendChild(canvasMenu);
+        
+        // Add resize option to menu
+        const resizeItem = document.createElement('div');
+        resizeItem.className = 'menu-item';
+        resizeItem.textContent = 'Resize';
+        resizeItem.onclick = () => startResizing(outlineElement);
+        canvasMenu.appendChild(resizeItem);
+    }
+    
+    // Create a transparent overlay for the canvas region that has pointer events
+    const canvasOverlay = document.createElement('div');
+    canvasOverlay.style.position = 'absolute';
+    canvasOverlay.style.left = region.x + 'px';
+    canvasOverlay.style.top = region.y + 'px';
+    canvasOverlay.style.width = region.width + 'px';
+    canvasOverlay.style.height = region.height + 'px';
+    canvasOverlay.style.zIndex = '999';
+    canvasOverlay.style.cursor = 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 24 24\'%3E%3Cpath fill=\'%23000000\' d=\'M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z\'/%3E%3C/svg%3E") 0 24, auto';
+    canvasOverlay.id = 'canvas-overlay';
+    imageContainer.appendChild(canvasOverlay);
+    debugElements.push(canvasOverlay);
+    
+    // Add right-click event to show menu
+    canvasOverlay.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        
+        // Position the menu at the cursor position
+        canvasMenu.style.left = `${e.clientX}px`;
+        canvasMenu.style.top = `${e.clientY}px`;
+        canvasMenu.style.display = 'block';
+        
+        // Hide menu when clicking anywhere else
+        const hideMenu = () => {
+            canvasMenu.style.display = 'none';
+            document.removeEventListener('click', hideMenu);
+        };
+        
+        setTimeout(() => {
+            document.addEventListener('click', hideMenu);
+        }, 0);
+    });
+}
+
+function startResizing(outlineElement) {
+    if (isResizing) return;
+    isResizing = true;
+    resizingOutline = outlineElement;
+    
+    // Make outline visible with pointer events
+    outlineElement.style.pointerEvents = 'auto';
+    outlineElement.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+    outlineElement.classList.add('resizing');
+    
+    // Add resize handles
+    const handles = ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'top', 'right', 'bottom', 'left'];
+    handles.forEach(position => {
+        const handle = document.createElement('div');
+        handle.className = `resize-handle ${position}`;
+        handle.dataset.handle = position;
+        outlineElement.appendChild(handle);
+        handle.style.display = 'block';
+        
+        handle.addEventListener('mousedown', startDragging);
+    });
+    
+    // Add submit button
+    const submitButton = document.createElement('button');
+    submitButton.id = 'resize-submit';
+    submitButton.textContent = 'Submit';
+    submitButton.addEventListener('click', finishResizing);
+    outlineElement.appendChild(submitButton);
+    submitButton.style.display = 'block';
+}
+
+function startDragging(e) {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    activeHandle = e.target.dataset.handle;
+    
+    // Store initial positions
+    const rect = resizingOutline.getBoundingClientRect();
+    startLeft = rect.left;
+    startTop = rect.top;
+    startWidth = rect.width;
+    startHeight = rect.height;
+    startX = e.clientX;
+    startY = e.clientY;
+    
+    // Add listeners for dragging
+    document.addEventListener('mousemove', doDragging);
+    document.addEventListener('mouseup', stopDragging);
+    
+    // Temporarily disable magnifier and change cursor
+    magnifier.style.display = 'none';
+    document.body.style.cursor = getResizeCursor(activeHandle);
+}
+
+function getResizeCursor(handle) {
+    const cursorMap = {
+        'top-left': 'nw-resize',
+        'top-right': 'ne-resize',
+        'bottom-left': 'sw-resize',
+        'bottom-right': 'se-resize',
+        'top': 'n-resize',
+        'right': 'e-resize',
+        'bottom': 's-resize',
+        'left': 'w-resize'
+    };
+    return cursorMap[handle] || 'move';
+}
+
+function doDragging(e) {
+    e.preventDefault();
+    
+    if (!isResizing || !activeHandle) return;
+    
+    const deltaX = e.clientX - startX;
+    const deltaY = e.clientY - startY;
+    
+    let newLeft = startLeft;
+    let newTop = startTop;
+    let newWidth = startWidth;
+    let newHeight = startHeight;
+    
+    // Calculate new dimensions based on which handle is being dragged
+    switch (activeHandle) {
+        case 'top-left':
+            newLeft = startLeft + deltaX;
+            newTop = startTop + deltaY;
+            newWidth = startWidth - deltaX;
+            newHeight = startHeight - deltaY;
+            break;
+        case 'top-right':
+            newTop = startTop + deltaY;
+            newWidth = startWidth + deltaX;
+            newHeight = startHeight - deltaY;
+            break;
+        case 'bottom-left':
+            newLeft = startLeft + deltaX;
+            newWidth = startWidth - deltaX;
+            newHeight = startHeight + deltaY;
+            break;
+        case 'bottom-right':
+            newWidth = startWidth + deltaX;
+            newHeight = startHeight + deltaY;
+            break;
+        case 'top':
+            newTop = startTop + deltaY;
+            newHeight = startHeight - deltaY;
+            break;
+        case 'right':
+            newWidth = startWidth + deltaX;
+            break;
+        case 'bottom':
+            newHeight = startHeight + deltaY;
+            break;
+        case 'left':
+            newLeft = startLeft + deltaX;
+            newWidth = startWidth - deltaX;
+            break;
+    }
+    
+    // Enforce minimum size
+    if (newWidth < 50) {
+        if (activeHandle.includes('left')) {
+            newLeft = startLeft + startWidth - 50;
+        }
+        newWidth = 50;
+    }
+    
+    if (newHeight < 50) {
+        if (activeHandle.includes('top')) {
+            newTop = startTop + startHeight - 50;
+        }
+        newHeight = 50;
+    }
+    
+    // Update outline position and size
+    resizingOutline.style.left = `${newLeft}px`;
+    resizingOutline.style.top = `${newTop}px`;
+    resizingOutline.style.width = `${newWidth}px`;
+    resizingOutline.style.height = `${newHeight}px`;
+    
+    // Update canvas region
+    canvasRegion = {
+        x: newLeft,
+        y: newTop,
+        width: newWidth,
+        height: newHeight
+    };
+}
+
+function stopDragging() {
+    document.removeEventListener('mousemove', doDragging);
+    document.removeEventListener('mouseup', stopDragging);
+    activeHandle = null;
+    
+    // Reset cursor
+    document.body.style.cursor = 'auto';
+}
+
+function finishResizing() {
+    if (!isResizing) return;
+    
+    // Remove resize handles
+    const handles = resizingOutline.querySelectorAll('.resize-handle');
+    handles.forEach(handle => handle.remove());
+    
+    // Remove submit button
+    const submitButton = document.getElementById('resize-submit');
+    if (submitButton) submitButton.remove();
+    
+    // Reset outline style
+    resizingOutline.style.pointerEvents = 'none';
+    resizingOutline.style.backgroundColor = '';
+    resizingOutline.classList.remove('resizing');
+    
+    // Reset state
+    isResizing = false;
+    resizingOutline = null;
+    
+    console.log('Updated canvas region:', canvasRegion);
 }
 
 function fallbackCanvasDetection() {
@@ -572,6 +721,9 @@ function isPointInCanvas(x, y) {
 }
 
 function moveMagnifier(e) {
+    // If we're in resizing mode, don't show magnifier
+    if (isResizing) return;
+    
     // Get cursor position within the viewport
     const clientX = e.clientX;
     const clientY = e.clientY;
@@ -589,13 +741,7 @@ function moveMagnifier(e) {
     if (isPointInCanvas(x, y)) {
         // Hide magnifier and show brush cursor
         magnifier.style.display = 'none';
-        
-        // Use the custom brush cursor if available, otherwise fall back to the SVG
-        if (customBrushCursor) {
-            document.body.style.cursor = `url("${customBrushCursor}") 10 50, auto`;
-        } else {
-            document.body.style.cursor = 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 24 24\'%3E%3Cpath fill=\'%23000000\' d=\'M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z\'/%3E%3C/svg%3E") 0 24, auto';
-        }
+        document.body.style.cursor = 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 24 24\'%3E%3Cpath fill=\'%23000000\' d=\'M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z\'/%3E%3C/svg%3E") 0 24, auto';
         return;
     }
 
@@ -629,15 +775,8 @@ imageContainer.addEventListener('mouseleave', () => {
     document.body.style.cursor = 'auto';
 });
 
-// Initialize the page
-async function initPage() {
-    await generateAndSetImage();
-    customBrushCursor = await generateAndProcessPaintbrushCursor();
-    console.log("Custom brush cursor initialized:", customBrushCursor ? "Success" : "Failed");
-}
-
-// Start initialization
-initPage();
+// Generate the image when the script loads
+generateAndSetImage();
 
 // Optional: Recalculate background size on window resize
 window.addEventListener('resize', () => {
