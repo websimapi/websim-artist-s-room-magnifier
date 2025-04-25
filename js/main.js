@@ -1,7 +1,7 @@
 import { generateAndSetImage } from './imageUtils.js';
 import { setupMagnifier } from './magnifier.js';
 import { setupResizeTools } from './resizeTools.js';
-import { updateCanvasRegionOnResize } from './canvasDetection.js';
+import { updateCanvasRegionFromRelative } from './canvasDetection.js';
 import { clearDebugElements, addDebugOutline } from './debug.js';
 
 // Initialize components when the script loads
@@ -17,10 +17,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Handle window resize events
     window.addEventListener('resize', () => {
-        // Recalculate and update the canvas region position
-        updateCanvasRegionOnResize();
-        
-        // Update magnifier background size
         const magnifier = document.getElementById('magnifier');
         const imageContainer = document.getElementById('image-container');
         
@@ -28,6 +24,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const containerWidth = imageContainer.offsetWidth;
             const containerHeight = imageContainer.offsetHeight;
             magnifier.style.backgroundSize = `${containerWidth * 3}px ${containerHeight * 3}px`;
+        }
+        
+        // Update canvas region based on relative position when window resizes
+        updateCanvasRegionFromRelative();
+        
+        // Redraw outline if it's visible
+        const toggleOutline = document.getElementById('toggle-outline');
+        const outlineVisible = toggleOutline.textContent === 'Hide Outline';
+        
+        if (outlineVisible) {
+            clearDebugElements();
+            addDebugOutline(canvasRegion, 'red', 3, 1.0);
         }
     });
 });

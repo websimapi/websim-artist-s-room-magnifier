@@ -5,6 +5,8 @@ let debugElements = [];
  * Adds a debug outline around a specified region
  */
 export function addDebugOutline(region, color = 'red', thickness = 2, opacity = 1.0) {
+    if (!region) return null;
+    
     const imageContainer = document.getElementById('image-container');
     const debugOutline = document.createElement('div');
     debugOutline.style.position = 'absolute';

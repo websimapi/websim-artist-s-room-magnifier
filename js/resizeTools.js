@@ -1,4 +1,4 @@
-import { canvasRegion, isPointInCanvas, storeCanvasProportions, outlineVisible } from './canvasDetection.js';
+import { canvasRegion, canvasRegionRelative, isPointInCanvas } from './canvasDetection.js';
 import { clearDebugElements, addDebugOutline } from './debug.js';
 
 // Resize state variables
@@ -7,6 +7,7 @@ let resizeHandles = [];
 let resizeOutline = null;
 let activeHandle = null;
 let startX, startY, startWidth, startHeight, startLeft, startTop;
+let outlineVisible = true; // Track outline visibility state
 
 /**
  * Sets up resize tools and context menu
@@ -123,12 +124,11 @@ export function setupResizeTools() {
  * Toggles the visibility of the canvas outline
  */
 function toggleOutlineVisibility() {
-    // Use imported outlineVisible
+    const toggleOutline = document.getElementById('toggle-outline');
     outlineVisible = !outlineVisible;
     clearDebugElements();
     
     // Update menu text based on current state
-    const toggleOutline = document.getElementById('toggle-outline');
     toggleOutline.textContent = outlineVisible ? 'Hide Outline' : 'Show Outline';
     
     // If visible, redraw the outline
@@ -305,8 +305,17 @@ function endResizeMode() {
     document.body.style.cursor = 'auto';
     imageContainer.style.cursor = 'auto';
     
-    // Store the new canvas proportions for proper resizing
-    storeCanvasProportions();
+    // Update relative position after resize
+    if (canvasRegion) {
+        const containerRect = imageContainer.getBoundingClientRect();
+        canvasRegionRelative = {
+            xPercent: canvasRegion.x / containerRect.width,
+            yPercent: canvasRegion.y / containerRect.height,
+            widthPercent: canvasRegion.width / containerRect.width,
+            heightPercent: canvasRegion.height / containerRect.height
+        };
+        console.log('Updated relative position after resize:', canvasRegionRelative);
+    }
     
     // Restore outline if it was visible before
     if (outlineVisible) {
@@ -314,10 +323,12 @@ function endResizeMode() {
         addDebugOutline(canvasRegion, 'red', 3, 1.0);
     }
     
-    // Set isResizing to false BEFORE dispatching mousemove event
+    // Important: Set isResizing to false BEFORE dispatching mousemove event
+    // so the magnifier logic works correctly
     isResizing = false;
     
     // Get current mouse position for accurate event triggering
+    // Use a more reliable method than window.event
     const lastMousePosition = window.lastKnownMousePosition || { x: 0, y: 0 };
     
     // Trigger a mousemove event to update cursor based on position
