@@ -1,7 +1,7 @@
 import { generateAndSetImage } from './imageUtils.js';
 import { setupMagnifier } from './magnifier.js';
 import { setupResizeTools } from './resizeTools.js';
-import { updateCanvasRegionFromRelative } from './canvasDetection.js';
+import { updateCanvasRegionFromRelative, canvasRegion } from './canvasDetection.js';
 import { clearDebugElements, addDebugOutline } from './debug.js';
 
 // Initialize components when the script loads
@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const toggleOutline = document.getElementById('toggle-outline');
         const outlineVisible = toggleOutline.textContent === 'Hide Outline';
         
-        if (outlineVisible) {
+        if (outlineVisible && canvasRegion) {
             clearDebugElements();
             addDebugOutline(canvasRegion, 'red', 3, 1.0);
         }
