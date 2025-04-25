@@ -6,6 +6,7 @@ const zoomLevel = 3; // How much to zoom in
 let canvasRegion = null; // Will store the detected canvas coordinates
 let originalImageUrl = null; // Store the original URL
 let debugElements = []; // Track debug elements for cleanup
+let customBrushCursor = null; // Store custom brush cursor
 
 async function generateAndSetImage() {
     // Clear any existing debug elements
@@ -35,6 +36,9 @@ async function generateAndSetImage() {
 
         // Load image and detect canvas
         loadImageWithProxies(imageUrl);
+        
+        // Generate custom paint brush cursor
+        generateCustomBrushCursor();
 
     } catch (error) {
         console.error("Error generating or setting image:", error);
@@ -478,6 +482,129 @@ function isPointInCanvas(x, y) {
     );
 }
 
+async function generateCustomBrushCursor() {
+    try {
+        console.log("Generating paint brush cursor...");
+        const result = await websim.imageGen({
+            prompt: "A realistic artist paintbrush with brown wooden handle and soft bristles on a pure white background. Clean, high contrast, centered, top-down view.",
+            width: 512,
+            height: 512,
+        });
+        
+        if (result.url) {
+            // Process the image to remove background
+            await processAndSetBrushCursor(result.url);
+        } else {
+            throw new Error("Failed to generate brush image");
+        }
+    } catch (error) {
+        console.error("Error generating brush cursor:", error);
+        // We'll fall back to the default SVG cursor in this case
+    }
+}
+
+async function processAndSetBrushCursor(imageUrl) {
+    try {
+        // Try different proxies to load the image
+        const corsProxies = [
+            (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+            (url) => `https://cors-anywhere.herokuapp.com/${url}`,
+            (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+            // Direct attempt without proxy as last resort
+            (url) => url
+        ];
+        
+        let img = null;
+        for (let i = 0; i < corsProxies.length && !img; i++) {
+            try {
+                const proxyUrl = corsProxies[i](imageUrl);
+                console.log(`Trying to load brush image with proxy #${i+1}`);
+                
+                // Wait for image to load
+                img = await loadImageWithProxy(proxyUrl);
+                if (img) {
+                    console.log(`Successfully loaded brush image with proxy #${i+1}`);
+                    break;
+                }
+            } catch (e) {
+                console.warn(`Failed to load brush image with proxy #${i+1}:`, e);
+            }
+        }
+        
+        if (!img) {
+            throw new Error("Could not load brush image with any proxy");
+        }
+        
+        // Create a canvas to process the image
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        
+        // Get image data for processing
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        
+        // Remove white background
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            
+            // Use our white detection function
+            if (isVeryWhite(r, g, b)) {
+                // Make pixel transparent
+                data[i + 3] = 0;
+            }
+        }
+        
+        // Put processed data back to canvas
+        ctx.putImageData(imageData, 0, 0);
+        
+        // Convert to data URL for cursor
+        const brushDataUrl = canvas.toDataURL('image/png');
+        
+        // Create a smaller version better suited for cursor
+        const cursorCanvas = document.createElement('canvas');
+        const cursorCtx = cursorCanvas.getContext('2d');
+        cursorCanvas.width = 64;
+        cursorCanvas.height = 64;
+        
+        // Draw resized brush
+        cursorCtx.drawImage(canvas, 0, 0, 64, 64);
+        const cursorDataUrl = cursorCanvas.toDataURL('image/png');
+        
+        // Set hot spot coordinates (brush tip area)
+        const hotspotX = 32; // Center
+        const hotspotY = 52; // Near bottom for brush tip
+        
+        // Store the custom cursor style
+        customBrushCursor = `url("${cursorDataUrl}") ${hotspotX} ${hotspotY}, auto`;
+        console.log("Custom brush cursor created successfully");
+        
+    } catch (error) {
+        console.error("Error processing brush image:", error);
+        // Fall back to SVG cursor
+    }
+}
+
+// Helper function to load image with proxy
+function loadImageWithProxy(proxyUrl) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "Anonymous";
+        
+        img.onload = () => resolve(img);
+        img.onerror = (e) => reject(new Error(`Failed to load image: ${e}`));
+        
+        img.src = proxyUrl;
+        
+        // Set timeout to avoid hanging
+        setTimeout(() => reject(new Error("Timeout loading image")), 10000);
+    });
+}
+
 function moveMagnifier(e) {
     // Get cursor position within the viewport
     const clientX = e.clientX;
@@ -496,7 +623,13 @@ function moveMagnifier(e) {
     if (isPointInCanvas(x, y)) {
         // Hide magnifier and show brush cursor
         magnifier.style.display = 'none';
-        document.body.style.cursor = 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 24 24\'%3E%3Cpath fill=\'%23000000\' d=\'M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z\'/%3E%3C/svg%3E") 0 24, auto';
+        
+        // Use custom brush cursor if available, otherwise use the SVG fallback
+        if (customBrushCursor) {
+            document.body.style.cursor = customBrushCursor;
+        } else {
+            document.body.style.cursor = 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 24 24\'%3E%3Cpath fill=\'%23000000\' d=\'M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z\'/%3E%3C/svg%3E") 0 24, auto';
+        }
         return;
     }
 
