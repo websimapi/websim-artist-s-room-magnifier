@@ -153,507 +153,134 @@ function loadImageWithUrl(url) {
     img.src = url;
 }
 
+function isVeryWhite(r, g, b) {
+    // Define very strict threshold for white pixels and low saturation.
+    // Optionally allow "almost white" (light gray) for realism.
+    const minWhite = 225;
+    const maxVariance = 15;
+    return (
+        r >= minWhite && g >= minWhite && b >= minWhite &&
+        Math.abs(r - g) < maxVariance &&
+        Math.abs(r - b) < maxVariance &&
+        Math.abs(g - b) < maxVariance
+    );
+}
+
 function detectCanvasRegion(img) {
     try {
-        // Create a canvas to analyze the image
+        // 1. Draw image to canvas
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        
-        // Set canvas dimensions to match image
         canvas.width = img.width;
         canvas.height = img.height;
-        
-        // Draw the image on canvas
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        
-        // Get image data
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-        
-        // IMPROVED: Get histogram of brightness values to determine white threshold adaptively
-        const brightnessHistogram = calculateBrightnessHistogram(data);
-        const whiteThresholds = determineWhiteThresholds(brightnessHistogram);
-        
-        console.log("Adaptive white thresholds:", whiteThresholds);
-        
-        // Create white pixel maps using adaptive thresholds
-        const whiteMaps = createAdaptiveWhiteMaps(data, canvas.width, canvas.height, whiteThresholds);
-        
-        // Apply improved edge detection
-        const edgeMap = enhancedEdgeDetection(data, canvas.width, canvas.height);
-        
-        // Find canvas candidates with improved algorithm
-        const candidates = findCanvasCandidatesImproved(whiteMaps, edgeMap, data, canvas.width, canvas.height);
-        
-        if (candidates.length > 0) {
-            // Visualize all candidates for debugging
-            candidates.forEach((candidate, i) => {
-                const opacity = 0.5 - (i * 0.1); // Decreasing opacity for lower-ranked candidates
-                addDebugOutline(candidate, i === 0 ? 'yellow' : 'orange', 1, opacity);
-            });
-            
-            // Get the best candidate
-            const bestCandidate = candidates[0];
-            
-            // Refine the corners of the best candidate for more precise detection
-            const refinedCanvas = refineCanvasCorners(bestCandidate, data, canvas.width, canvas.height);
-            
-            // Convert to relative coordinates for the container
-            const containerRect = imageContainer.getBoundingClientRect();
-            const scaleX = containerRect.width / canvas.width;
-            const scaleY = containerRect.height / canvas.height;
-            
-            canvasRegion = {
-                x: refinedCanvas.x * scaleX,
-                y: refinedCanvas.y * scaleY,
-                width: refinedCanvas.width * scaleX,
-                height: refinedCanvas.height * scaleY
-            };
-            
-            // Visualize the final refined canvas
-            addDebugOutline(canvasRegion, 'red', 2, 1.0);
-            console.log("Canvas detected:", canvasRegion);
-        } else {
-            console.log("Canvas not detected, using fallback");
-            fallbackCanvasDetection();
+        const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        // 2. Create white binary map
+        const whiteMap = [];
+        let whitePixelCount = 0;
+        for (let y = 0; y < height; y++) {
+            whiteMap[y] = [];
+            for (let x = 0; x < width; x++) {
+                const i = (y * width + x) * 4;
+                const r = data[i], g = data[i + 1], b = data[i + 2];
+                if (isVeryWhite(r, g, b)) {
+                    whiteMap[y][x] = 1; whitePixelCount++;
+                } else {
+                    whiteMap[y][x] = 0;
+                }
+            }
         }
-    } catch (error) {
-        console.error("Error in canvas detection:", error);
+        if (whitePixelCount === 0) {
+            // Fallback
+            fallbackCanvasDetection();
+            return;
+        }
+
+        // 3. Largest White Rectangle: find all connected white regions and select the largest one by area
+        const region = findLargestWhiteRectangle(whiteMap, width, height);
+
+        if (!region) {
+            fallbackCanvasDetection();
+            return;
+        }
+
+        // 4. Map region to screen coordinates
+        const containerRect = imageContainer.getBoundingClientRect();
+        const scaleX = containerRect.width / width;
+        const scaleY = containerRect.height / height;
+        canvasRegion = {
+            x: region.minX * scaleX,
+            y: region.minY * scaleY,
+            width: (region.maxX - region.minX + 1) * scaleX,
+            height: (region.maxY - region.minY + 1) * scaleY,
+        };
+
+        // Show debug outline
+        clearDebugElements();
+        addDebugOutline(canvasRegion, 'red', 3, 1.0);
+        console.log('Canvas detected:', canvasRegion, region);
+
+    } catch (e) {
+        console.error("Canvas detection error", e);
         fallbackCanvasDetection();
     }
 }
 
-function calculateBrightnessHistogram(data) {
-    // Create histogram of brightness values (0-255)
-    const histogram = new Array(256).fill(0);
-    
-    for (let i = 0; i < data.length; i += 4) {
-        // Calculate brightness using perceived luminance formula
-        const brightness = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
-        histogram[brightness]++;
-    }
-    
-    return histogram;
-}
+function findLargestWhiteRectangle(whiteMap, w, h) {
+    const visited = Array.from({length: h}, () => Array(w).fill(false));
+    let largestRegion = null;
+    let largestRegionArea = 0;
 
-function determineWhiteThresholds(histogram) {
-    // Find peaks in the higher brightness range
-    const totalPixels = histogram.reduce((sum, count) => sum + count, 0);
-    let cumulativeSum = 0;
-    
-    // Look for brightness values that represent the top 15%, 10%, and 5% brightest pixels
-    const thresholds = [];
-    
-    for (let i = 255; i >= 0; i--) {
-        cumulativeSum += histogram[i];
-        const percentile = cumulativeSum / totalPixels;
-        
-        if (thresholds.length === 0 && percentile >= 0.05) {
-            thresholds.push({ threshold: i, percentile: 0.05 });
-        } else if (thresholds.length === 1 && percentile >= 0.10) {
-            thresholds.push({ threshold: i, percentile: 0.10 });
-        } else if (thresholds.length === 2 && percentile >= 0.15) {
-            thresholds.push({ threshold: i, percentile: 0.15 });
-            break;
-        }
-    }
-    
-    // If we couldn't find good thresholds, use defaults
-    if (thresholds.length < 3) {
-        return [
-            { r: 230, g: 230, b: 230 },  // Very white
-            { r: 210, g: 210, b: 210 },  // Less white
-            { r: 190, g: 190, b: 190 }   // Even less white
-        ];
-    }
-    
-    // Convert brightness thresholds to RGB thresholds
-    return thresholds.map(t => ({
-        r: t.threshold,
-        g: t.threshold,
-        b: t.threshold
-    }));
-}
-
-function createAdaptiveWhiteMaps(data, width, height, thresholds) {
-    const maps = [];
-    
-    thresholds.forEach(threshold => {
-        const map = new Array(height);
-        for (let y = 0; y < height; y++) {
-            map[y] = new Array(width).fill(0);
-            for (let x = 0; x < width; x++) {
-                const idx = (y * width + x) * 4;
-                
-                // Check if pixel is white-ish
-                // Also check for high brightness and low saturation (characteristic of white)
-                const r = data[idx];
-                const g = data[idx + 1];
-                const b = data[idx + 2];
-                
-                // Calculate HSV to better identify white (high value, low saturation)
-                const max = Math.max(r, g, b);
-                const min = Math.min(r, g, b);
-                const delta = max - min;
-                const saturation = max === 0 ? 0 : delta / max;
-                
-                // A pixel is white if:
-                // 1. All RGB values are above threshold
-                // 2. It has low saturation (close to grayscale)
-                // 3. Color channels are close to each other (indicating grayscale)
-                const isWhite = 
-                    (r >= threshold.r && g >= threshold.g && b >= threshold.b) &&
-                    (saturation < 0.15) && // Low saturation
-                    (Math.abs(r - g) < 15 && Math.abs(r - b) < 15 && Math.abs(g - b) < 15); // Color channels are close
-                
-                map[y][x] = isWhite ? 1 : 0;
-            }
-        }
-        maps.push(map);
-    });
-    
-    return maps;
-}
-
-function enhancedEdgeDetection(data, width, height) {
-    // Improved edge detection using Sobel-like operator
-    const edgeMap = Array(height).fill().map(() => Array(width).fill(0));
-    const sobelThreshold = 40; // Threshold for edge detection
-    
-    // Process inner pixels (exclude borders)
-    for (let y = 1; y < height - 1; y++) {
-        for (let x = 1; x < width - 1; x++) {
-            // Sobel kernels for x and y direction
-            let gx = 0;
-            let gy = 0;
-            
-            // 3x3 grid around current pixel
-            for (let dy = -1; dy <= 1; dy++) {
-                for (let dx = -1; dx <= 1; dx++) {
-                    const idx = ((y + dy) * width + (x + dx)) * 4;
-                    
-                    // Calculate grayscale value
-                    const gray = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-                    
-                    // Apply Sobel weights
-                    // For x direction
-                    if (dx === -1) gx -= gray * (dy === 0 ? 2 : 1);
-                    if (dx === 1) gx += gray * (dy === 0 ? 2 : 1);
-                    
-                    // For y direction
-                    if (dy === -1) gy -= gray * (dx === 0 ? 2 : 1);
-                    if (dy === 1) gy += gray * (dx === 0 ? 2 : 1);
-                }
-            }
-            
-            // Calculate gradient magnitude
-            const magnitude = Math.sqrt(gx * gx + gy * gy);
-            
-            // Apply threshold
-            edgeMap[y][x] = magnitude > sobelThreshold ? 1 : 0;
-        }
-    }
-    
-    return edgeMap;
-}
-
-function findCanvasCandidatesImproved(whiteMaps, edgeMap, imageData, width, height) {
-    const candidates = [];
-    const data = imageData.data;
-    
-    // Minimum acceptable canvas dimensions
-    const MIN_WIDTH = width * 0.08;
-    const MIN_HEIGHT = height * 0.08;
-    const MAX_ASPECT_RATIO = 2.0;
-    
-    // Process each white map (from strict to lenient thresholds)
-    whiteMaps.forEach((whiteMap, mapIndex) => {
-        // Use connected component analysis to find white regions
-        const regions = findConnectedWhiteRegions(whiteMap, width, height);
-        
-        // Filter and score regions
-        regions.forEach(region => {
-            // Skip if too small
-            if (region.width < MIN_WIDTH || region.height < MIN_HEIGHT) return;
-            
-            // Check aspect ratio
-            const aspectRatio = Math.max(region.width / region.height, region.height / region.width);
-            if (aspectRatio > MAX_ASPECT_RATIO) return;
-            
-            // Calculate additional quality scores
-            const scores = calculateRegionScores(region, whiteMap, edgeMap, data, width, height);
-            
-            // Add to candidates if scores are good enough
-            if (scores.totalScore > 0.6) {
-                candidates.push({
-                    x: region.x,
-                    y: region.y,
-                    width: region.width,
-                    height: region.height,
-                    ...scores,
-                    mapIndex: mapIndex
-                });
-            }
-        });
-    });
-    
-    // Sort by total score (descending)
-    return candidates.sort((a, b) => b.totalScore - a.totalScore);
-}
-
-function findConnectedWhiteRegions(whiteMap, width, height) {
-    const visited = Array(height).fill().map(() => Array(width).fill(false));
-    const regions = [];
-    
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            if (whiteMap[y][x] === 1 && !visited[y][x]) {
-                // Found a new white region
-                const region = {
-                    pixels: [],
-                    minX: width,
-                    minY: height,
-                    maxX: 0,
-                    maxY: 0
-                };
-                
-                // Use BFS to find connected white pixels
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            if (!visited[y][x] && whiteMap[y][x]) {
+                // Begin flood fill
                 const queue = [{x, y}];
+                let pixels = [];
+                let minX = x, maxX = x, minY = y, maxY = y;
                 visited[y][x] = true;
-                
-                while (queue.length > 0) {
-                    const pixel = queue.shift();
-                    region.pixels.push(pixel);
-                    
-                    // Update region bounds
-                    region.minX = Math.min(region.minX, pixel.x);
-                    region.minY = Math.min(region.minY, pixel.y);
-                    region.maxX = Math.max(region.maxX, pixel.x);
-                    region.maxY = Math.max(region.maxY, pixel.y);
-                    
-                    // Check neighbors (4-connectivity)
-                    const neighbors = [
-                        {x: pixel.x + 1, y: pixel.y},
-                        {x: pixel.x - 1, y: pixel.y},
-                        {x: pixel.x, y: pixel.y + 1},
-                        {x: pixel.x, y: pixel.y - 1}
-                    ];
-                    
-                    neighbors.forEach(neighbor => {
-                        if (neighbor.x >= 0 && neighbor.x < width && 
-                            neighbor.y >= 0 && neighbor.y < height && 
-                            whiteMap[neighbor.y][neighbor.x] === 1 && 
-                            !visited[neighbor.y][neighbor.x]) {
-                            
-                            queue.push(neighbor);
-                            visited[neighbor.y][neighbor.x] = true;
+
+                while (queue.length) {
+                    const {x: cx, y: cy} = queue.shift();
+                    pixels.push([cx, cy]);
+                    minX = Math.min(minX, cx); maxX = Math.max(maxX, cx);
+                    minY = Math.min(minY, cy); maxY = Math.max(maxY, cy);
+
+                    // 4-connected neighbors
+                    [
+                        [1,0],[0,1],[-1,0],[0,-1]
+                    ].forEach(([dx,dy]) => {
+                        const nx = cx+dx, ny = cy+dy;
+                        if (nx>=0 && nx<w && ny>=0 && ny<h && whiteMap[ny][nx]&& !visited[ny][nx]) {
+                            visited[ny][nx]=true; queue.push({x:nx, y:ny});
                         }
                     });
                 }
-                
-                // Calculate region properties
-                region.x = region.minX;
-                region.y = region.minY;
-                region.width = region.maxX - region.minX + 1;
-                region.height = region.maxY - region.minY + 1;
-                region.area = region.pixels.length;
-                region.density = region.area / (region.width * region.height);
-                
-                // Only add regions with good density (filled rectangles, not sparse regions)
-                if (region.density > 0.7) {
-                    regions.push(region);
+                const area = pixels.length;
+                if (area > largestRegionArea) {
+                    largestRegion = { minX, minY, maxX, maxY, area, pixels };
+                    largestRegionArea = area;
                 }
             }
         }
     }
-    
-    return regions;
-}
 
-function calculateRegionScores(region, whiteMap, edgeMap, imageData, width, height) {
-    // Calculate various scores to determine the likelihood of being a canvas
-    
-    // 1. Edge strength around perimeter
-    let edgeStrength = 0;
-    let perimeterPixels = 0;
-    
-    // Check top and bottom edges
-    for (let x = region.x; x < region.x + region.width; x++) {
-        // Top edge
-        if (region.y > 0 && edgeMap[region.y - 1][x] === 1) edgeStrength++;
-        // Bottom edge
-        if (region.y + region.height < height && edgeMap[region.y + region.height][x] === 1) edgeStrength++;
-        perimeterPixels += 2;
-    }
-    
-    // Check left and right edges
-    for (let y = region.y; y < region.y + region.height; y++) {
-        // Left edge
-        if (region.x > 0 && edgeMap[y][region.x - 1] === 1) edgeStrength++;
-        // Right edge
-        if (region.x + region.width < width && edgeMap[y][region.x + region.width] === 1) edgeStrength++;
-        perimeterPixels += 2;
-    }
-    
-    const edgeScore = perimeterPixels > 0 ? edgeStrength / perimeterPixels : 0;
-    
-    // 2. Whiteness score (how consistently white is the region)
-    let whiteSum = 0;
-    let pixelCount = 0;
-    
-    for (let y = region.y; y < region.y + region.height; y++) {
-        for (let x = region.x; x < region.x + region.width; x++) {
-            if (x < width && y < height) { // Safety check
-                const idx = (y * width + x) * 4;
-                const brightness = (imageData[idx] + imageData[idx + 1] + imageData[idx + 2]) / 3;
-                whiteSum += brightness;
-                pixelCount++;
-            }
+    // Only allow very rectangular canvases: min size threshold, "aspect ratio", and "fill"
+    if (largestRegion && largestRegion.area > 500) {
+        const wRect = largestRegion.maxX - largestRegion.minX + 1;
+        const hRect = largestRegion.maxY - largestRegion.minY + 1;
+        const aspect = Math.max(wRect/hRect, hRect/wRect);
+        const fillFrac = largestRegion.area / (wRect * hRect);
+        if (
+            wRect > w * 0.08 && hRect > h * 0.08 &&         // not tiny
+            aspect < 2.5 && fillFrac > 0.6                  // roughly rectangular and well-filled
+        ) {
+            return largestRegion;
         }
     }
-    
-    const avgBrightness = pixelCount > 0 ? whiteSum / pixelCount / 255 : 0;
-    
-    // 3. Rectangularity score (how rectangular is the region)
-    const expectedArea = region.width * region.height;
-    const actualArea = region.area;
-    const rectangularityScore = expectedArea > 0 ? actualArea / expectedArea : 0;
-    
-    // 4. Position score (prefer canvas near center)
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const regionCenterX = region.x + region.width / 2;
-    const regionCenterY = region.y + region.height / 2;
-    
-    const distanceFromCenter = Math.sqrt(
-        Math.pow(regionCenterX - centerX, 2) + 
-        Math.pow(regionCenterY - centerY, 2)
-    );
-    const maxDistance = Math.sqrt(Math.pow(width / 2, 2) + Math.pow(height / 2, 2));
-    const positionScore = 1 - (distanceFromCenter / maxDistance);
-    
-    // 5. Size score (prefer larger canvases, but not too big)
-    const relativeSizeScore = (region.width * region.height) / (width * height);
-    let sizeScore = 0;
-    if (relativeSizeScore > 0.05 && relativeSizeScore < 0.5) {
-        sizeScore = 1 - Math.abs(0.2 - relativeSizeScore) / 0.2; // Optimal size around 20% of image
-        sizeScore = Math.max(0, Math.min(1, sizeScore)); // Clamp between 0 and 1
-    }
-    
-    // Combine scores with weights
-    const totalScore = 
-        avgBrightness * 0.4 +
-        edgeScore * 0.2 + 
-        rectangularityScore * 0.15 + 
-        positionScore * 0.15 + 
-        sizeScore * 0.1;
-    
-    return {
-        edgeScore,
-        whitenessScore: avgBrightness,
-        rectangularityScore,
-        positionScore,
-        sizeScore,
-        totalScore
-    };
-}
 
-function refineCanvasCorners(candidate, imageData, width, height) {
-    // Get initial bounds
-    const { x, y, width: rectWidth, height: rectHeight } = candidate;
-    
-    // Define search areas around expected corners
-    const cornerSearchRadius = Math.min(rectWidth, rectHeight) * 0.1;
-    
-    // Find the most likely corner points by examining color gradients
-    const corners = {
-        topLeft: findExactCorner(x, y, -1, -1, cornerSearchRadius, imageData, width, height),
-        topRight: findExactCorner(x + rectWidth, y, 1, -1, cornerSearchRadius, imageData, width, height),
-        bottomLeft: findExactCorner(x, y + rectHeight, -1, 1, cornerSearchRadius, imageData, width, height),
-        bottomRight: findExactCorner(x + rectWidth, y + rectHeight, 1, 1, cornerSearchRadius, imageData, width, height)
-    };
-    
-    // Convert corner points to refined rectangle
-    const refinedX = Math.min(corners.topLeft.x, corners.bottomLeft.x);
-    const refinedY = Math.min(corners.topLeft.y, corners.topRight.y);
-    const refinedWidth = Math.max(
-        Math.abs(corners.topRight.x - corners.topLeft.x),
-        Math.abs(corners.bottomRight.x - corners.bottomLeft.x)
-    );
-    const refinedHeight = Math.max(
-        Math.abs(corners.bottomLeft.y - corners.topLeft.y),
-        Math.abs(corners.bottomRight.y - corners.topRight.y)
-    );
-    
-    return {
-        x: refinedX,
-        y: refinedY,
-        width: refinedWidth,
-        height: refinedHeight,
-        confidence: candidate.totalScore
-    };
-}
-
-function findExactCorner(centerX, centerY, dirX, dirY, radius, imageData, width, height) {
-    // Look for the corner point with the strongest gradient in the given search area
-    let bestX = centerX;
-    let bestY = centerY;
-    let maxGradient = 0;
-    
-    const startX = Math.max(0, Math.floor(centerX - (dirX === -1 ? radius : 0)));
-    const endX = Math.min(width - 1, Math.ceil(centerX + (dirX === 1 ? radius : 0)));
-    const startY = Math.max(0, Math.floor(centerY - (dirY === -1 ? radius : 0)));
-    const endY = Math.min(height - 1, Math.ceil(centerY + (dirY === 1 ? radius : 0)));
-    
-    for (let y = startY; y <= endY; y++) {
-        for (let x = startX; x <= endX; x++) {
-            // Calculate gradient strength at this point
-            const gradient = calculateCornerStrength(x, y, imageData, width, height);
-            
-            if (gradient > maxGradient) {
-                maxGradient = gradient;
-                bestX = x;
-                bestY = y;
-            }
-        }
-    }
-    
-    return { x: bestX, y: bestY };
-}
-
-function calculateCornerStrength(x, y, imageData, width, height) {
-    // Safety bounds check
-    if (x <= 0 || y <= 0 || x >= width - 1 || y >= height - 1) return 0;
-    
-    const data = imageData.data;
-    let gradientSum = 0;
-    
-    // Check 8 surrounding pixels
-    const directions = [
-        {dx: -1, dy: -1}, {dx: 0, dy: -1}, {dx: 1, dy: -1},
-        {dx: -1, dy: 0},                   {dx: 1, dy: 0},
-        {dx: -1, dy: 1},  {dx: 0, dy: 1},  {dx: 1, dy: 1}
-    ];
-    
-    const centerIdx = (y * width + x) * 4;
-    const centerColor = {
-        r: data[centerIdx],
-        g: data[centerIdx + 1],
-        b: data[centerIdx + 2]
-    };
-    
-    directions.forEach(({dx, dy}) => {
-        const neighborIdx = ((y + dy) * width + (x + dx)) * 4;
-        
-        // Calculate color difference
-        const dr = Math.abs(centerColor.r - data[neighborIdx]);
-        const dg = Math.abs(centerColor.g - data[neighborIdx + 1]);
-        const db = Math.abs(centerColor.b - data[neighborIdx + 2]);
-        
-        gradientSum += dr + dg + db;
-    });
-    
-    return gradientSum;
+    return null;
 }
 
 function addDebugOutline(region, color = 'red', thickness = 2, opacity = 1.0) {
