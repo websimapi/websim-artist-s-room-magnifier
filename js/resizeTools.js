@@ -320,11 +320,9 @@ function endResizeMode() {
     // so the magnifier logic works correctly
     isResizing = false;
     
-    // Get current mouse position for accurate event triggering
-    // Use a more reliable method than window.event
+    // Trigger a mousemove event to update cursor based on position and active tool
     const lastMousePosition = window.lastKnownMousePosition || { x: 0, y: 0 };
     
-    // Trigger a mousemove event to update cursor based on position
     const event = new MouseEvent('mousemove', {
         bubbles: true,
         cancelable: true,

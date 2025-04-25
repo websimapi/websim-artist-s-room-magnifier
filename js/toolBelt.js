@@ -39,20 +39,28 @@ function setActiveTool(toolType) {
     
     // Reset cursor to default first
     document.body.style.cursor = 'auto';
+    imageContainer.style.cursor = 'auto';
     
-    if (toolType === 'magnifier') {
-        console.log('Magnifier tool selected');
-        // We'll let the mousemove handler decide the cursor based on position
-    } else if (toolType === 'brush') {
-        console.log('Brush tool selected');
-        // Always show brush cursor when brush tool is selected
-        const brushCursor = 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 24 24\'%3E%3Cpath fill=\'%23000000\' d=\'M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z\'/%3E%3C/svg%3E") 0 24, auto';
-        document.body.style.cursor = brushCursor;
-        imageContainer.style.cursor = brushCursor;
+    // Hide magnifier by default
+    const magnifier = document.getElementById('magnifier');
+    if (magnifier) {
+        magnifier.style.display = 'none';
     }
     
     // Store the active tool for reference in other components
     window.activeTool = toolType;
+    
+    // Trigger a mousemove event to update the cursor based on the new tool
+    if (window.lastKnownMousePosition) {
+        const event = new MouseEvent('mousemove', {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            clientX: window.lastKnownMousePosition.x,
+            clientY: window.lastKnownMousePosition.y
+        });
+        document.dispatchEvent(event);
+    }
 }
 
 /**
