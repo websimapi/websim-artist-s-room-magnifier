@@ -1,3 +1,5 @@
+import { canvasRegionRelative } from './canvasDetection.js';
+
 // Track debug elements for cleanup
 let debugElements = [];
 
