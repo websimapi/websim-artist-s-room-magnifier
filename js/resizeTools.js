@@ -1,4 +1,4 @@
-import { canvasRegion, isPointInCanvas } from './canvasDetection.js';
+import { canvasRegion, canvasRegionPercent, updateCanvasRegionFromPercent, isPointInCanvas } from './canvasDetection.js';
 import { clearDebugElements, addDebugOutline } from './debug.js';
 
 // Resize state variables
@@ -9,7 +9,8 @@ let activeHandle = null;
 let startX, startY, startWidth, startHeight, startLeft, startTop;
 let outlineVisible = true; // Track outline visibility state
 
-let _resizeOutlineLastRegion = null;
+// Track resize position as percentages for perfect scaling
+let resizeOutlinePercent = null;
 
 /**
  * Sets up resize tools and context menu
@@ -24,7 +25,10 @@ export function setupResizeTools() {
     // NEW: Keep outline in sync with container scaling
     const imageContainer = document.getElementById('image-container');
     imageContainer.addEventListener('imagecontainer-resize', () => {
+        // Update canvas region from percentage data before adjusting outlines
+        updateCanvasRegionFromPercent();
         adjustResizeOutlineToContainer();
+        
         if (outlineVisible && canvasRegion) {
             clearDebugElements();
             addDebugOutline(canvasRegion, 'red', 3, 1.0);
@@ -116,10 +120,15 @@ export function setupResizeTools() {
         };
         Object.assign(canvasRegion, newCanvasRegion);
 
-        // Store the most recent region for adjusting after container resizes
-        _resizeOutlineLastRegion = { ...canvasRegion };
+        // Store the region as percentages for perfect scaling
+        canvasRegionPercent = {
+            x: canvasRegion.x / containerRect.width,
+            y: canvasRegion.y / containerRect.height,
+            width: canvasRegion.width / containerRect.width,
+            height: canvasRegion.height / containerRect.height
+        };
 
-        console.log('Canvas region updated:', canvasRegion);
+        console.log('Canvas region updated:', canvasRegion, canvasRegionPercent);
         
         // Clean up resize elements and handle outline visibility
         endResizeMode();
@@ -136,13 +145,28 @@ export function setupResizeTools() {
  * Ensures the resize outline stays in correct position/scale when container changes.
  */
 function adjustResizeOutlineToContainer() {
-    if (_resizeOutlineLastRegion && resizeOutline) {
-        // If using resize mode, update outline to current region
-        let region = _resizeOutlineLastRegion;
-        resizeOutline.style.left = region.x + 'px';
-        resizeOutline.style.top = region.y + 'px';
-        resizeOutline.style.width = region.width + 'px';
-        resizeOutline.style.height = region.height + 'px';
+    if (resizeOutlinePercent && resizeOutline) {
+        const imageContainer = document.getElementById('image-container');
+        const containerRect = imageContainer.getBoundingClientRect();
+        
+        // Calculate position from percentages
+        const x = resizeOutlinePercent.x * containerRect.width;
+        const y = resizeOutlinePercent.y * containerRect.height;
+        const width = resizeOutlinePercent.width * containerRect.width;
+        const height = resizeOutlinePercent.height * containerRect.height;
+        
+        // Update outline position
+        resizeOutline.style.left = x + 'px';
+        resizeOutline.style.top = y + 'px';
+        resizeOutline.style.width = width + 'px';
+        resizeOutline.style.height = height + 'px';
+        
+        // Update resize controls position
+        const resizeControls = document.getElementById('resize-controls');
+        if (resizeControls.style.display !== 'none') {
+            resizeControls.style.left = (x + width - 80) + 'px';
+            resizeControls.style.top = (y + height - 40) + 'px';
+        }
     }
 }
 
@@ -170,6 +194,9 @@ function startResizeMode() {
     const imageContainer = document.getElementById('image-container');
     const resizeControls = document.getElementById('resize-controls');
     
+    // Update canvas region from percentages in case window has been resized
+    updateCanvasRegionFromPercent();
+    
     isResizing = true;
     
     // Create a resizable outline based on the current canvas region
@@ -184,8 +211,14 @@ function startResizeMode() {
     resizeOutline.style.zIndex = '999';
     imageContainer.appendChild(resizeOutline);
 
-    // Save for scaling with future container resizes
-    _resizeOutlineLastRegion = { ...canvasRegion };
+    // Store as percentages for perfect scaling
+    const containerRect = imageContainer.getBoundingClientRect();
+    resizeOutlinePercent = {
+        x: canvasRegion.x / containerRect.width,
+        y: canvasRegion.y / containerRect.height,
+        width: canvasRegion.width / containerRect.width,
+        height: canvasRegion.height / containerRect.height
+    };
 
     // Add resize handles
     const handlePositions = [
@@ -293,12 +326,12 @@ function doResize(e) {
     resizeOutline.style.left = newLeft + 'px';
     resizeOutline.style.top = newTop + 'px';
 
-    // Keep track for sync after scaling
-    _resizeOutlineLastRegion = {
-        x: newLeft,
-        y: newTop,
-        width: newWidth,
-        height: newHeight
+    // Store as percentages for perfect scaling
+    resizeOutlinePercent = {
+        x: newLeft / containerRect.width,
+        y: newTop / containerRect.height,
+        width: newWidth / containerRect.width,
+        height: newHeight / containerRect.height
     };
     
     // Update submit button position
