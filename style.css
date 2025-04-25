@@ -38,11 +38,3 @@ body, html {
     transform: translate(-50%, -50%); /* Center the magnifier on the cursor */
 }
 
-.brush-cursor {
-    position: absolute;
-    width: 40px;
-    height: 40px;
-    pointer-events: none;
-    z-index: 1001;
-    display: none;
-}

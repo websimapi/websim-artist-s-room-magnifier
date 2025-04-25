@@ -6,16 +6,105 @@ const zoomLevel = 3; // How much to zoom in
 let canvasRegion = null; // Will store the detected canvas coordinates
 let originalImageUrl = null; // Store the original URL
 let debugElements = []; // Track debug elements for cleanup
-let brushCursorUrl = null; // Store the brush cursor URL
+let customBrushCursor = null; // Store the brush cursor URL
+
+async function generateAndProcessPaintbrushCursor() {
+    try {
+        // Generate paintbrush image with LLM
+        const result = await websim.imageGen({
+            prompt: "High-quality digital illustration of a traditional artist's paintbrush with bristles and wooden handle on a pure white background. The paintbrush should be viewed from a slight angle showing both the handle and bristles clearly. Clean, detailed, and professional looking.",
+            aspect_ratio: "1:1",
+        });
+        
+        const brushImageUrl = result.url;
+        console.log("Generated brush image:", brushImageUrl);
+        
+        // Process image to remove white background
+        const transparentBrushUrl = await makeBackgroundTransparent(brushImageUrl);
+        return transparentBrushUrl;
+    } catch (error) {
+        console.error("Error generating paintbrush cursor:", error);
+        return null; // Fallback to the SVG brush
+    }
+}
+
+async function makeBackgroundTransparent(imageUrl) {
+    try {
+        // Create an off-screen canvas to process the image
+        const img = await loadImagePromise(imageUrl);
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = img.width;
+        canvas.height = img.height;
+        
+        // Draw the image to the canvas
+        ctx.drawImage(img, 0, 0);
+        
+        // Get image data to manipulate pixels
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        
+        // Loop through pixels and make white/near-white pixels transparent
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            
+            // Check if the pixel is white or close to white
+            if (isCloseToWhite(r, g, b)) {
+                // Set alpha channel to 0 (transparent)
+                data[i + 3] = 0;
+            }
+        }
+        
+        // Put the modified image data back to the canvas
+        ctx.putImageData(imageData, 0, 0);
+        
+        // Convert canvas to a data URL
+        return canvas.toDataURL('image/png');
+    } catch (error) {
+        console.error("Error processing image:", error);
+        return null;
+    }
+}
+
+function isCloseToWhite(r, g, b) {
+    const threshold = 240; // Higher values will make fewer pixels transparent
+    const colorVariance = 15; // How much the colors can vary from each other
+    
+    // Check if it's very bright and low saturation (whitish)
+    return (
+        r > threshold && 
+        g > threshold && 
+        b > threshold &&
+        Math.abs(r - g) < colorVariance &&
+        Math.abs(r - b) < colorVariance &&
+        Math.abs(g - b) < colorVariance
+    );
+}
+
+function loadImagePromise(url) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "Anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = (err) => {
+            console.error("Failed to load image:", err);
+            reject(new Error("Failed to load image"));
+        };
+        img.src = url;
+        
+        // Set a timeout to avoid hanging forever
+        setTimeout(() => reject(new Error("Image load timeout")), 10000);
+    });
+}
 
 async function generateAndSetImage() {
     // Clear any existing debug elements
     clearDebugElements();
     
     try {
-        // Generate brush cursor first
-        await generateBrushCursor();
-        
         // Updated prompt to specifically request colored walls (not white)
         const result = await websim.imageGen({
           prompt: "HD hyper realistic artist room with deep blue walls and various art supplies like paints, brushes, palettes, and easels scattered around. In the center, there's a large, blank WHITE canvas on an easel. The canvas should be clearly defined, rectangular, and stand out from its surroundings. Soft, natural light illuminates the scene.",
@@ -482,27 +571,6 @@ function isPointInCanvas(x, y) {
     );
 }
 
-async function generateBrushCursor() {
-    try {
-        const result = await websim.imageGen({
-            prompt: "High quality detailed image of a single paintbrush with bristles on solid white background, professional, centered, top-down view, art tool, detailed bristles, wooden handle, clear edges, simplified style",
-            width: 256,
-            height: 256,
-        });
-        
-        if (result && result.url) {
-            brushCursorUrl = result.url;
-            console.log("Brush cursor generated:", brushCursorUrl);
-        } else {
-            console.error("Failed to generate brush cursor");
-        }
-    } catch (error) {
-        console.error("Error generating brush cursor:", error);
-        // Fallback to basic brush cursor if generation fails
-        brushCursorUrl = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24'%3E%3Cpath fill='%23000000' d='M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z'/%3E%3C/svg%3E";
-    }
-}
-
 function moveMagnifier(e) {
     // Get cursor position within the viewport
     const clientX = e.clientX;
@@ -522,11 +590,10 @@ function moveMagnifier(e) {
         // Hide magnifier and show brush cursor
         magnifier.style.display = 'none';
         
-        if (brushCursorUrl) {
-            // Use the generated brush cursor if available
-            document.body.style.cursor = `url("${brushCursorUrl}") 10 50, auto`;
+        // Use the custom brush cursor if available, otherwise fall back to the SVG
+        if (customBrushCursor) {
+            document.body.style.cursor = `url("${customBrushCursor}") 10 50, auto`;
         } else {
-            // Fallback to SVG brush if generation failed
             document.body.style.cursor = 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 24 24\'%3E%3Cpath fill=\'%23000000\' d=\'M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z\'/%3E%3C/svg%3E") 0 24, auto';
         }
         return;
@@ -562,8 +629,15 @@ imageContainer.addEventListener('mouseleave', () => {
     document.body.style.cursor = 'auto';
 });
 
-// Generate the image when the script loads
-generateAndSetImage();
+// Initialize the page
+async function initPage() {
+    await generateAndSetImage();
+    customBrushCursor = await generateAndProcessPaintbrushCursor();
+    console.log("Custom brush cursor initialized:", customBrushCursor ? "Success" : "Failed");
+}
+
+// Start initialization
+initPage();
 
 // Optional: Recalculate background size on window resize
 window.addEventListener('resize', () => {
