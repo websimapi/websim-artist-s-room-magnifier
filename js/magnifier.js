@@ -26,7 +26,7 @@ export function setupMagnifier() {
 /**
  * Moves the magnifier based on mouse position
  */
-export function moveMagnifier(e) {
+function moveMagnifier(e) {
     const imageContainer = document.getElementById('image-container');
     const magnifier = document.getElementById('magnifier');
     
