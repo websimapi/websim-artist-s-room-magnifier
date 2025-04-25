@@ -63,12 +63,8 @@ export function setupResizeTools() {
         
         console.log('Canvas region updated:', canvasRegion);
         
-        // Clean up resize elements
+        // Clean up resize elements and handle outline visibility
         endResizeMode();
-        
-        // Update the debug outline
-        clearDebugElements();
-        addDebugOutline(canvasRegion, 'red', 3, 1.0);
     });
     
     // Toggle outline visibility handler
