@@ -1,5 +1,9 @@
 const imageContainer = document.getElementById('image-container');
 const magnifier = document.getElementById('magnifier');
+const contextMenu = document.getElementById('context-menu');
+const resizeOption = document.getElementById('resize-option');
+const resizeControls = document.getElementById('resize-controls');
+const submitResizeBtn = document.getElementById('submit-resize');
 
 const magnifierSize = 150; // Should match CSS width/height
 const zoomLevel = 3; // How much to zoom in
@@ -7,12 +11,11 @@ let canvasRegion = null; // Will store the detected canvas coordinates
 let originalImageUrl = null; // Store the original URL
 let debugElements = []; // Track debug elements for cleanup
 
-// State variables for resize functionality
 let isResizing = false;
-let resizingOutline = null;
+let resizeHandles = [];
+let resizeOutline = null;
 let activeHandle = null;
-let startX, startY;
-let startWidth, startHeight, startLeft, startTop;
+let startX, startY, startWidth, startHeight, startLeft, startTop;
 
 async function generateAndSetImage() {
     // Clear any existing debug elements
@@ -63,7 +66,7 @@ function clearDebugElements() {
     debugElements = [];
 }
 
-function loadImageWithProxies(imageUrl) {
+async function loadImageWithProxies(imageUrl) {
     // List of CORS proxies to try
     const corsProxies = [
         (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
@@ -77,7 +80,7 @@ function loadImageWithProxies(imageUrl) {
 
     // Try to convert to blob URL as an alternative method
     try {
-        const blobUrl = convertToBlobUrl(imageUrl);
+        const blobUrl = await convertToBlobUrl(imageUrl);
         if (blobUrl) {
             console.log("Successfully converted to blob URL");
             loadImageWithUrl(blobUrl);
@@ -99,7 +102,7 @@ function loadImageWithProxies(imageUrl) {
             img.crossOrigin = "Anonymous";
             
             // Use a promise to handle the async image loading
-            new Promise((resolve, reject) => {
+            await new Promise((resolve, reject) => {
                 img.onload = () => {
                     console.log(`Successfully loaded image with proxy #${i+1}`);
                     try {
@@ -132,19 +135,20 @@ function loadImageWithProxies(imageUrl) {
     }
 }
 
-function convertToBlobUrl(url) {
+async function convertToBlobUrl(url) {
     try {
         // Try to fetch the image as a blob
-        return fetch(url, {
+        const response = await fetch(url, {
             mode: 'cors',
             cache: 'no-cache',
-        }).then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            return response.blob().then(blob => URL.createObjectURL(blob));
         });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const blob = await response.blob();
+        return URL.createObjectURL(blob);
     } catch (error) {
         console.warn("Blob URL conversion failed:", error);
         return null;
@@ -441,248 +445,12 @@ function addDebugOutline(region, color = 'red', thickness = 2, opacity = 1.0) {
     debugOutline.style.pointerEvents = 'none';
     debugOutline.style.zIndex = '1000';
     debugOutline.style.opacity = opacity;
-    debugOutline.id = 'canvas-outline';
     imageContainer.appendChild(debugOutline);
     
     // Add to the list of debug elements for cleanup
     debugElements.push(debugOutline);
     
-    // Add context menu event listener to the outline
-    setupCanvasInteractions(debugOutline, region);
-    
     return debugOutline;
-}
-
-function setupCanvasInteractions(outlineElement, region) {
-    // Create dropdown menu element if it doesn't exist
-    let canvasMenu = document.getElementById('canvas-menu');
-    if (!canvasMenu) {
-        canvasMenu = document.createElement('div');
-        canvasMenu.id = 'canvas-menu';
-        document.body.appendChild(canvasMenu);
-        
-        // Add resize option to menu
-        const resizeItem = document.createElement('div');
-        resizeItem.className = 'menu-item';
-        resizeItem.textContent = 'Resize';
-        resizeItem.onclick = () => startResizing(outlineElement);
-        canvasMenu.appendChild(resizeItem);
-    }
-    
-    // Create a transparent overlay for the canvas region that has pointer events
-    const canvasOverlay = document.createElement('div');
-    canvasOverlay.style.position = 'absolute';
-    canvasOverlay.style.left = region.x + 'px';
-    canvasOverlay.style.top = region.y + 'px';
-    canvasOverlay.style.width = region.width + 'px';
-    canvasOverlay.style.height = region.height + 'px';
-    canvasOverlay.style.zIndex = '999';
-    canvasOverlay.style.cursor = 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 24 24\'%3E%3Cpath fill=\'%23000000\' d=\'M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z\'/%3E%3C/svg%3E") 0 24, auto';
-    canvasOverlay.id = 'canvas-overlay';
-    imageContainer.appendChild(canvasOverlay);
-    debugElements.push(canvasOverlay);
-    
-    // Add right-click event to show menu
-    canvasOverlay.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        
-        // Position the menu at the cursor position
-        canvasMenu.style.left = `${e.clientX}px`;
-        canvasMenu.style.top = `${e.clientY}px`;
-        canvasMenu.style.display = 'block';
-        
-        // Hide menu when clicking anywhere else
-        const hideMenu = () => {
-            canvasMenu.style.display = 'none';
-            document.removeEventListener('click', hideMenu);
-        };
-        
-        setTimeout(() => {
-            document.addEventListener('click', hideMenu);
-        }, 0);
-    });
-}
-
-function startResizing(outlineElement) {
-    if (isResizing) return;
-    isResizing = true;
-    resizingOutline = outlineElement;
-    
-    // Make outline visible with pointer events
-    outlineElement.style.pointerEvents = 'auto';
-    outlineElement.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
-    outlineElement.classList.add('resizing');
-    
-    // Add resize handles
-    const handles = ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'top', 'right', 'bottom', 'left'];
-    handles.forEach(position => {
-        const handle = document.createElement('div');
-        handle.className = `resize-handle ${position}`;
-        handle.dataset.handle = position;
-        outlineElement.appendChild(handle);
-        handle.style.display = 'block';
-        
-        handle.addEventListener('mousedown', startDragging);
-    });
-    
-    // Add submit button
-    const submitButton = document.createElement('button');
-    submitButton.id = 'resize-submit';
-    submitButton.textContent = 'Submit';
-    submitButton.addEventListener('click', finishResizing);
-    outlineElement.appendChild(submitButton);
-    submitButton.style.display = 'block';
-}
-
-function startDragging(e) {
-    e.stopPropagation();
-    e.preventDefault();
-    
-    activeHandle = e.target.dataset.handle;
-    
-    // Store initial positions
-    const rect = resizingOutline.getBoundingClientRect();
-    startLeft = rect.left;
-    startTop = rect.top;
-    startWidth = rect.width;
-    startHeight = rect.height;
-    startX = e.clientX;
-    startY = e.clientY;
-    
-    // Add listeners for dragging
-    document.addEventListener('mousemove', doDragging);
-    document.addEventListener('mouseup', stopDragging);
-    
-    // Temporarily disable magnifier and change cursor
-    magnifier.style.display = 'none';
-    document.body.style.cursor = getResizeCursor(activeHandle);
-}
-
-function getResizeCursor(handle) {
-    const cursorMap = {
-        'top-left': 'nw-resize',
-        'top-right': 'ne-resize',
-        'bottom-left': 'sw-resize',
-        'bottom-right': 'se-resize',
-        'top': 'n-resize',
-        'right': 'e-resize',
-        'bottom': 's-resize',
-        'left': 'w-resize'
-    };
-    return cursorMap[handle] || 'move';
-}
-
-function doDragging(e) {
-    e.preventDefault();
-    
-    if (!isResizing || !activeHandle) return;
-    
-    const deltaX = e.clientX - startX;
-    const deltaY = e.clientY - startY;
-    
-    let newLeft = startLeft;
-    let newTop = startTop;
-    let newWidth = startWidth;
-    let newHeight = startHeight;
-    
-    // Calculate new dimensions based on which handle is being dragged
-    switch (activeHandle) {
-        case 'top-left':
-            newLeft = startLeft + deltaX;
-            newTop = startTop + deltaY;
-            newWidth = startWidth - deltaX;
-            newHeight = startHeight - deltaY;
-            break;
-        case 'top-right':
-            newTop = startTop + deltaY;
-            newWidth = startWidth + deltaX;
-            newHeight = startHeight - deltaY;
-            break;
-        case 'bottom-left':
-            newLeft = startLeft + deltaX;
-            newWidth = startWidth - deltaX;
-            newHeight = startHeight + deltaY;
-            break;
-        case 'bottom-right':
-            newWidth = startWidth + deltaX;
-            newHeight = startHeight + deltaY;
-            break;
-        case 'top':
-            newTop = startTop + deltaY;
-            newHeight = startHeight - deltaY;
-            break;
-        case 'right':
-            newWidth = startWidth + deltaX;
-            break;
-        case 'bottom':
-            newHeight = startHeight + deltaY;
-            break;
-        case 'left':
-            newLeft = startLeft + deltaX;
-            newWidth = startWidth - deltaX;
-            break;
-    }
-    
-    // Enforce minimum size
-    if (newWidth < 50) {
-        if (activeHandle.includes('left')) {
-            newLeft = startLeft + startWidth - 50;
-        }
-        newWidth = 50;
-    }
-    
-    if (newHeight < 50) {
-        if (activeHandle.includes('top')) {
-            newTop = startTop + startHeight - 50;
-        }
-        newHeight = 50;
-    }
-    
-    // Update outline position and size
-    resizingOutline.style.left = `${newLeft}px`;
-    resizingOutline.style.top = `${newTop}px`;
-    resizingOutline.style.width = `${newWidth}px`;
-    resizingOutline.style.height = `${newHeight}px`;
-    
-    // Update canvas region
-    canvasRegion = {
-        x: newLeft,
-        y: newTop,
-        width: newWidth,
-        height: newHeight
-    };
-}
-
-function stopDragging() {
-    document.removeEventListener('mousemove', doDragging);
-    document.removeEventListener('mouseup', stopDragging);
-    activeHandle = null;
-    
-    // Reset cursor
-    document.body.style.cursor = 'auto';
-}
-
-function finishResizing() {
-    if (!isResizing) return;
-    
-    // Remove resize handles
-    const handles = resizingOutline.querySelectorAll('.resize-handle');
-    handles.forEach(handle => handle.remove());
-    
-    // Remove submit button
-    const submitButton = document.getElementById('resize-submit');
-    if (submitButton) submitButton.remove();
-    
-    // Reset outline style
-    resizingOutline.style.pointerEvents = 'none';
-    resizingOutline.style.backgroundColor = '';
-    resizingOutline.classList.remove('resizing');
-    
-    // Reset state
-    isResizing = false;
-    resizingOutline = null;
-    
-    console.log('Updated canvas region:', canvasRegion);
 }
 
 function fallbackCanvasDetection() {
@@ -710,7 +478,7 @@ function fallbackCanvasDetection() {
 }
 
 function isPointInCanvas(x, y) {
-    if (!canvasRegion) return false;
+    if (!canvasRegion || isResizing) return false;
     
     return (
         x >= canvasRegion.x && 
@@ -721,7 +489,7 @@ function isPointInCanvas(x, y) {
 }
 
 function moveMagnifier(e) {
-    // If we're in resizing mode, don't show magnifier
+    // Skip if we're resizing
     if (isResizing) return;
     
     // Get cursor position within the viewport
@@ -760,6 +528,199 @@ function moveMagnifier(e) {
 
     // Show the magnifier
     magnifier.style.display = 'block';
+}
+
+// Context menu event listeners
+imageContainer.addEventListener('contextmenu', (e) => {
+    // Only show context menu when clicking inside canvas region
+    const x = e.clientX - imageContainer.getBoundingClientRect().left;
+    const y = e.clientY - imageContainer.getBoundingClientRect().top;
+    
+    if (isPointInCanvas(x, y)) {
+        e.preventDefault();
+        contextMenu.style.display = 'block';
+        contextMenu.style.left = `${e.clientX}px`;
+        contextMenu.style.top = `${e.clientY}px`;
+    }
+});
+
+// Hide context menu when clicking elsewhere
+document.addEventListener('click', () => {
+    contextMenu.style.display = 'none';
+});
+
+// Resize option click handler
+resizeOption.addEventListener('click', () => {
+    contextMenu.style.display = 'none';
+    startResizeMode();
+});
+
+function startResizeMode() {
+    isResizing = true;
+    
+    // Create a resizable outline based on the current canvas region
+    resizeOutline = document.createElement('div');
+    resizeOutline.style.position = 'absolute';
+    resizeOutline.style.border = '2px dashed #4CAF50';
+    resizeOutline.style.left = canvasRegion.x + 'px';
+    resizeOutline.style.top = canvasRegion.y + 'px';
+    resizeOutline.style.width = canvasRegion.width + 'px';
+    resizeOutline.style.height = canvasRegion.height + 'px';
+    resizeOutline.style.pointerEvents = 'none';
+    resizeOutline.style.zIndex = '999';
+    imageContainer.appendChild(resizeOutline);
+    
+    // Add resize handles
+    const handlePositions = [
+        'top-left', 'top', 'top-right', 
+        'left', 'right', 
+        'bottom-left', 'bottom', 'bottom-right'
+    ];
+    
+    handlePositions.forEach(pos => {
+        const handle = document.createElement('div');
+        handle.className = `resize-handle ${pos}`;
+        handle.dataset.position = pos;
+        handle.style.pointerEvents = 'auto';
+        resizeOutline.appendChild(handle);
+        resizeHandles.push(handle);
+        
+        handle.addEventListener('mousedown', startResize);
+    });
+    
+    // Show submit button
+    resizeControls.style.display = 'block';
+    resizeControls.style.left = (canvasRegion.x + canvasRegion.width - 80) + 'px';
+    resizeControls.style.top = (canvasRegion.y + canvasRegion.height - 40) + 'px';
+    
+    // Disable magnifier during resize
+    document.body.style.cursor = 'default';
+}
+
+function startResize(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    activeHandle = e.target;
+    const rect = resizeOutline.getBoundingClientRect();
+    
+    startX = e.clientX;
+    startY = e.clientY;
+    startWidth = rect.width;
+    startHeight = rect.height;
+    startLeft = rect.left;
+    startTop = rect.top;
+    
+    document.addEventListener('mousemove', doResize);
+    document.addEventListener('mouseup', stopResize);
+}
+
+function doResize(e) {
+    if (!activeHandle) return;
+    
+    const position = activeHandle.dataset.position;
+    const deltaX = e.clientX - startX;
+    const deltaY = e.clientY - startY;
+    
+    const rect = resizeOutline.getBoundingClientRect();
+    const containerRect = imageContainer.getBoundingClientRect();
+    
+    let newWidth = startWidth;
+    let newHeight = startHeight;
+    let newLeft = startLeft - containerRect.left;
+    let newTop = startTop - containerRect.top;
+    
+    // Handle different resize directions
+    if (position.includes('left')) {
+        newWidth = startWidth - deltaX;
+        newLeft = startLeft + deltaX - containerRect.left;
+    } else if (position.includes('right')) {
+        newWidth = startWidth + deltaX;
+    }
+    
+    if (position.includes('top')) {
+        newHeight = startHeight - deltaY;
+        newTop = startTop + deltaY - containerRect.top;
+    } else if (position.includes('bottom')) {
+        newHeight = startHeight + deltaY;
+    }
+    
+    // Apply minimum dimensions (50x50 pixels)
+    if (newWidth < 50) {
+        newWidth = 50;
+        if (position.includes('left')) {
+            newLeft = startLeft + startWidth - 50 - containerRect.left;
+        }
+    }
+    
+    if (newHeight < 50) {
+        newHeight = 50;
+        if (position.includes('top')) {
+            newTop = startTop + startHeight - 50 - containerRect.top;
+        }
+    }
+    
+    // Update the outline dimensions
+    resizeOutline.style.width = newWidth + 'px';
+    resizeOutline.style.height = newHeight + 'px';
+    resizeOutline.style.left = newLeft + 'px';
+    resizeOutline.style.top = newTop + 'px';
+    
+    // Update submit button position
+    resizeControls.style.left = (newLeft + newWidth - 80) + 'px';
+    resizeControls.style.top = (newTop + newHeight - 40) + 'px';
+}
+
+function stopResize() {
+    document.removeEventListener('mousemove', doResize);
+    document.removeEventListener('mouseup', stopResize);
+    activeHandle = null;
+}
+
+// Submit resize button handler
+submitResizeBtn.addEventListener('click', () => {
+    const rect = resizeOutline.getBoundingClientRect();
+    const containerRect = imageContainer.getBoundingClientRect();
+    
+    // Update canvas region with new dimensions
+    canvasRegion = {
+        x: rect.left - containerRect.left,
+        y: rect.top - containerRect.top,
+        width: rect.width,
+        height: rect.height
+    };
+    
+    console.log('Canvas region updated:', canvasRegion);
+    
+    // Clean up resize elements
+    endResizeMode();
+    
+    // Update the debug outline
+    clearDebugElements();
+    addDebugOutline(canvasRegion, 'red', 3, 1.0);
+});
+
+function endResizeMode() {
+    isResizing = false;
+    
+    // Remove resize handles and outline
+    resizeHandles.forEach(handle => {
+        if (handle.parentNode) {
+            handle.parentNode.removeChild(handle);
+        }
+    });
+    resizeHandles = [];
+    
+    if (resizeOutline && resizeOutline.parentNode) {
+        resizeOutline.parentNode.removeChild(resizeOutline);
+    }
+    resizeOutline = null;
+    
+    // Hide resize controls
+    resizeControls.style.display = 'none';
+    
+    // Return to normal cursor behavior
+    document.body.style.cursor = 'none';
 }
 
 // Event listeners

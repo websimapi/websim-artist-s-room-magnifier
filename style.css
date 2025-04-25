@@ -38,73 +38,57 @@ body, html {
     transform: translate(-50%, -50%); /* Center the magnifier on the cursor */
 }
 
-/* Dropdown Menu Styles */
-#canvas-menu {
+#context-menu {
     position: absolute;
     background-color: white;
     border: 1px solid #ccc;
-    box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
-    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     padding: 5px 0;
-    z-index: 1100;
+    border-radius: 4px;
     display: none;
+    z-index: 1000;
 }
 
 .menu-item {
     padding: 8px 15px;
     cursor: pointer;
-    font-family: Arial, sans-serif;
-    font-size: 14px;
 }
 
 .menu-item:hover {
     background-color: #f0f0f0;
 }
 
-/* Resize handles */
-.resize-handle {
+#resize-controls {
     position: absolute;
-    width: 10px;
-    height: 10px;
-    background-color: white;
-    border: 1px solid #666;
-    z-index: 1050;
-    cursor: move;
-    display: none;
+    z-index: 1001;
 }
 
-.resize-handle.top-left { top: -5px; left: -5px; cursor: nw-resize; }
-.resize-handle.top-right { top: -5px; right: -5px; cursor: ne-resize; }
-.resize-handle.bottom-left { bottom: -5px; left: -5px; cursor: sw-resize; }
-.resize-handle.bottom-right { bottom: -5px; right: -5px; cursor: se-resize; }
-.resize-handle.top { top: -5px; left: 50%; transform: translateX(-50%); width: 20px; cursor: n-resize; }
-.resize-handle.right { top: 50%; right: -5px; transform: translateY(-50%); height: 20px; cursor: e-resize; }
-.resize-handle.bottom { bottom: -5px; left: 50%; transform: translateX(-50%); width: 20px; cursor: s-resize; }
-.resize-handle.left { top: 50%; left: -5px; transform: translateY(-50%); height: 20px; cursor: w-resize; }
-
-/* Submit button */
-#resize-submit {
+#submit-resize {
     position: absolute;
     bottom: 10px;
     right: 10px;
     padding: 5px 10px;
-    background-color: #007bff;
+    background-color: #4CAF50;
     color: white;
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    font-family: Arial, sans-serif;
-    font-size: 14px;
-    z-index: 1050;
-    display: none;
 }
 
-#resize-submit:hover {
-    background-color: #0069d9;
+.resize-handle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background-color: #4CAF50;
+    border: 1px solid white;
+    z-index: 1001;
 }
 
-/* Canvas outline in resize mode */
-.resizing {
-    background-color: rgba(255, 255, 255, 0.2) !important;
-    cursor: default !important;
-}
+.resize-handle.top-left { top: -5px; left: -5px; cursor: nwse-resize; }
+.resize-handle.top-right { top: -5px; right: -5px; cursor: nesw-resize; }
+.resize-handle.bottom-left { bottom: -5px; left: -5px; cursor: nesw-resize; }
+.resize-handle.bottom-right { bottom: -5px; right: -5px; cursor: nwse-resize; }
+.resize-handle.top { top: -5px; left: 50%; margin-left: -5px; cursor: ns-resize; }
+.resize-handle.right { top: 50%; right: -5px; margin-top: -5px; cursor: ew-resize; }
+.resize-handle.bottom { bottom: -5px; left: 50%; margin-left: -5px; cursor: ns-resize; }
+.resize-handle.left { top: 50%; left: -5px; margin-top: -5px; cursor: ew-resize; }
