@@ -2,73 +2,6 @@ import { addDebugOutline } from './debug.js';
 
 // Shared state
 export let canvasRegion = null;
-let originalContainerSize = null;
-let originalCanvasRegion = null;
-let outlineElement = null;
-
-/**
- * Sets up the responsive outline functionality
- */
-export function setupResponsiveOutline() {
-    const imageContainer = document.getElementById('image-container');
-    
-    // Store initial container dimensions when canvas is first detected
-    if (canvasRegion && !originalContainerSize) {
-        originalContainerSize = {
-            width: imageContainer.offsetWidth,
-            height: imageContainer.offsetHeight
-        };
-        originalCanvasRegion = { ...canvasRegion };
-    }
-    
-    // Set up ResizeObserver to detect container size changes
-    const resizeObserver = new ResizeObserver(entries => {
-        for (const entry of entries) {
-            if (entry.target === imageContainer) {
-                updateCanvasOutlinePosition();
-            }
-        }
-    });
-    
-    // Start observing the image container
-    resizeObserver.observe(imageContainer);
-}
-
-/**
- * Updates the canvas outline position based on container size changes
- */
-export function updateCanvasOutlinePosition() {
-    if (!canvasRegion || !originalCanvasRegion || !originalContainerSize) return;
-    
-    const imageContainer = document.getElementById('image-container');
-    const currentWidth = imageContainer.offsetWidth;
-    const currentHeight = imageContainer.offsetHeight;
-    
-    // Calculate scale factors
-    const scaleX = currentWidth / originalContainerSize.width;
-    const scaleY = currentHeight / originalContainerSize.height;
-    
-    // Update current canvas region with scaled values
-    canvasRegion.x = originalCanvasRegion.x * scaleX;
-    canvasRegion.y = originalCanvasRegion.y * scaleY;
-    canvasRegion.width = originalCanvasRegion.width * scaleX;
-    canvasRegion.height = originalCanvasRegion.height * scaleY;
-    
-    // Update outline if it exists and should be visible
-    const isOutlineVisible = window.outlineVisible !== false; // Default to true if not set
-    
-    if (isOutlineVisible) {
-        // Remove existing outline if any
-        if (outlineElement && outlineElement.parentNode) {
-            outlineElement.parentNode.removeChild(outlineElement);
-        }
-        
-        // Create new outline with updated dimensions
-        outlineElement = addDebugOutline(canvasRegion, 'red', 3, 1.0);
-    }
-    
-    console.log('Canvas region updated with scale factors:', { scaleX, scaleY });
-}
 
 /**
  * Detects the canvas region in an image
@@ -204,15 +137,8 @@ export function detectCanvasRegion(img) {
             height: (bestCanvasRegion.maxY - bestCanvasRegion.minY + 1) * scaleY,
         };
 
-        // Store original values for responsive scaling
-        originalContainerSize = {
-            width: containerRect.width,
-            height: containerRect.height
-        };
-        originalCanvasRegion = { ...canvasRegion };
-
         // Show debug outline
-        outlineElement = addDebugOutline(canvasRegion, 'red', 3, 1.0);
+        addDebugOutline(canvasRegion, 'red', 3, 1.0);
         console.log('Canvas detected:', canvasRegion, bestCanvasRegion);
 
     } catch (e) {
@@ -385,17 +311,10 @@ export function fallbackCanvasDetection() {
         height: height
     };
     
-    // Store original values for responsive scaling
-    originalContainerSize = {
-        width: containerRect.width,
-        height: containerRect.height
-    };
-    originalCanvasRegion = { ...canvasRegion };
-    
     console.log("Using fallback canvas region:", canvasRegion);
     
     // Add visualization for the fallback region
-    outlineElement = addDebugOutline(canvasRegion, 'orange', 2);
+    addDebugOutline(canvasRegion, 'orange', 2);
 }
 
 /**
