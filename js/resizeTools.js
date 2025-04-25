@@ -1,4 +1,4 @@
-import { canvasRegion } from './canvasDetection.js';
+import { canvasRegion, isPointInCanvas } from './canvasDetection.js';
 import { clearDebugElements, addDebugOutline } from './debug.js';
 
 // Resize state variables
@@ -23,9 +23,7 @@ export function setupResizeTools() {
         const x = e.clientX - imageContainer.getBoundingClientRect().left;
         const y = e.clientY - imageContainer.getBoundingClientRect().top;
         
-        // Import at runtime to avoid circular dependencies
-        const { isPointInCanvas } = require('./canvasDetection.js');
-        
+        // Use the imported isPointInCanvas function
         if (isPointInCanvas(x, y)) {
             e.preventDefault();
             contextMenu.style.display = 'block';
