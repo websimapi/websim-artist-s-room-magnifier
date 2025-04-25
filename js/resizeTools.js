@@ -13,6 +13,12 @@ let outlineVisible = true; // Track outline visibility state
  * Sets up resize tools and context menu
  */
 export function setupResizeTools() {
+    // Track mouse position globally for accurate cursor updates
+    window.lastKnownMousePosition = { x: 0, y: 0 };
+    document.addEventListener('mousemove', (e) => {
+        window.lastKnownMousePosition = { x: e.clientX, y: e.clientY };
+    });
+    
     const imageContainer = document.getElementById('image-container');
     const contextMenu = document.getElementById('context-menu');
     const resizeOption = document.getElementById('resize-option');
@@ -279,8 +285,6 @@ function endResizeMode() {
     const imageContainer = document.getElementById('image-container');
     const resizeControls = document.getElementById('resize-controls');
     
-    isResizing = false;
-    
     // Remove resize handles and outline
     resizeHandles.forEach(handle => {
         if (handle.parentNode) {
@@ -297,7 +301,7 @@ function endResizeMode() {
     // Hide resize controls
     resizeControls.style.display = 'none';
     
-    // Return to normal cursor behavior (not 'none')
+    // Reset cursor to default first
     document.body.style.cursor = 'auto';
     imageContainer.style.cursor = 'auto';
     
@@ -307,10 +311,21 @@ function endResizeMode() {
         addDebugOutline(canvasRegion, 'red', 3, 1.0);
     }
     
+    // Important: Set isResizing to false BEFORE dispatching mousemove event
+    // so the magnifier logic works correctly
+    isResizing = false;
+    
+    // Get current mouse position for accurate event triggering
+    // Use a more reliable method than window.event
+    const lastMousePosition = window.lastKnownMousePosition || { x: 0, y: 0 };
+    
     // Trigger a mousemove event to update cursor based on position
     const event = new MouseEvent('mousemove', {
-        clientX: window.event ? window.event.clientX : 0,
-        clientY: window.event ? window.event.clientY : 0
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: lastMousePosition.x,
+        clientY: lastMousePosition.y
     });
     document.dispatchEvent(event);
 }
