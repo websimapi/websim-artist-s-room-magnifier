@@ -5,12 +5,13 @@ const magnifierSize = 150; // Should match CSS width/height
 const zoomLevel = 3; // How much to zoom in
 let canvasRegion = null; // Will store the detected canvas coordinates
 let originalImageUrl = null; // Store the original URL
+let canvasShape = null; // Will store the canvas shape points for irregular shapes
 
 async function generateAndSetImage() {
     try {
         // Updated prompt to specifically request colored walls (not white)
         const result = await websim.imageGen({
-          prompt: "HD hyper realistic artist room with deep blue walls and various art supplies like paints, brushes, palettes, and easels scattered around. In the center, there's a large, blank WHITE canvas on an easel. The canvas should be clearly defined, rectangular, and stand out from its surroundings. Soft, natural light illuminates the scene.",
+          prompt: "HD hyper realistic artist room with deep blue walls and various art supplies like paints, brushes, palettes, and easels scattered around. In the center, there's a large, blank WHITE canvas on an easel. The canvas should be clearly defined and stand out from its surroundings. It might have an unusual or interesting shape. Soft, natural light illuminates the scene.",
           aspect_ratio: "16:9", // Good for full screen
         });
         const imageUrl = result.url;
@@ -159,8 +160,8 @@ function detectCanvasRegion(img) {
         
         // Create a binary map of white-ish pixels
         const whiteMap = [];
-        const threshold = 170; // Reduced threshold from 200 to 170 for more lenient detection
-        const brightnessThreshold = 200; // Additional threshold for overall brightness
+        const threshold = 150; // Even more lenient threshold to detect off-white areas
+        const brightnessThreshold = 180; // Lower brightness threshold for shadows and variations
         
         for (let y = 0; y < canvas.height; y++) {
             whiteMap[y] = [];
@@ -168,10 +169,6 @@ function detectCanvasRegion(img) {
                 const idx = (y * canvas.width + x) * 4;
                 
                 // Check if the pixel is white-ish using multiple criteria
-                // 1. Individual RGB values are high enough
-                // 2. The average brightness is high
-                // 3. The color is fairly balanced (not too yellow, blue, etc.)
-                
                 const r = data[idx];
                 const g = data[idx + 1];
                 const b = data[idx + 2];
@@ -179,52 +176,98 @@ function detectCanvasRegion(img) {
                 const brightness = (r + g + b) / 3;
                 const colorVariance = Math.max(Math.abs(r - g), Math.abs(r - b), Math.abs(g - b));
                 
-                // A pixel is considered white-ish if:
-                // - It's very bright overall AND
-                // - The RGB components are reasonably balanced (not too colorful)
+                // More lenient criteria for what counts as white
                 const isWhite = (
-                    (r > threshold && g > threshold && b > threshold) || // Original criteria, but more lenient
-                    (brightness > brightnessThreshold && colorVariance < 30) // New brightness-based criteria
+                    // High RGB values
+                    (r > threshold && g > threshold && b > threshold) ||
+                    // High brightness with reasonable color balance
+                    (brightness > brightnessThreshold && colorVariance < 40) ||
+                    // Allow slightly colorful but very bright pixels (catches highlights)
+                    (brightness > 220 && colorVariance < 60)
                 );
                 
                 whiteMap[y][x] = isWhite ? 1 : 0;
             }
         }
         
-        // Apply a simple smoothing to fill small gaps in the detected white areas
-        smoothWhiteMap(whiteMap, canvas.width, canvas.height);
+        // Apply more aggressive smoothing to fill gaps and connect components
+        smoothWhiteMap(whiteMap, canvas.width, canvas.height, 2);
         
-        // Find the largest white rectangle
-        const result = findLargestWhiteRectangle(whiteMap, canvas.width, canvas.height);
+        // Try to find canvas using connected component analysis first
+        const canvasComponents = findCanvasComponents(whiteMap, canvas.width, canvas.height);
         
-        if (result) {
-            console.log("Canvas detected:", result);
+        if (canvasComponents && canvasComponents.length > 0) {
+            console.log("Canvas shapes detected:", canvasComponents.length);
+            
+            // Sort by area (largest first)
+            canvasComponents.sort((a, b) => b.area - a.area);
+            
+            // Get the largest component as our canvas
+            const largestComponent = canvasComponents[0];
             
             // Convert to relative coordinates for the container
             const containerRect = imageContainer.getBoundingClientRect();
             const scaleX = containerRect.width / canvas.width;
             const scaleY = containerRect.height / canvas.height;
             
+            // Store the canvas shape points for precise hover detection
+            canvasShape = largestComponent.points.map(point => ({
+                x: point.x * scaleX,
+                y: point.y * scaleY
+            }));
+            
+            // Create a bounding box for the shape
+            let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+            
+            for (const point of largestComponent.points) {
+                minX = Math.min(minX, point.x);
+                minY = Math.min(minY, point.y);
+                maxX = Math.max(maxX, point.x);
+                maxY = Math.max(maxY, point.y);
+            }
+            
             canvasRegion = {
-                x: result.x * scaleX,
-                y: result.y * scaleY,
-                width: result.width * scaleX,
-                height: result.height * scaleY
+                x: minX * scaleX,
+                y: minY * scaleY,
+                width: (maxX - minX) * scaleX,
+                height: (maxY - minY) * scaleY
             };
             
             // Add visualization for debugging (can be removed in production)
-            const debugOutline = document.createElement('div');
-            debugOutline.style.position = 'absolute';
-            debugOutline.style.border = '2px dashed red';
-            debugOutline.style.left = canvasRegion.x + 'px';
-            debugOutline.style.top = canvasRegion.y + 'px';
-            debugOutline.style.width = canvasRegion.width + 'px';
-            debugOutline.style.height = canvasRegion.height + 'px';
-            debugOutline.style.pointerEvents = 'none';
-            imageContainer.appendChild(debugOutline);
+            visualizeCanvasShape(canvasShape, canvasRegion);
         } else {
-            console.log("Canvas not detected");
-            fallbackCanvasDetection();
+            // Fallback to the original rectangle detection method
+            const result = findLargestWhiteRectangle(whiteMap, canvas.width, canvas.height);
+            
+            if (result) {
+                console.log("Canvas detected as rectangle:", result);
+                
+                // Convert to relative coordinates for the container
+                const containerRect = imageContainer.getBoundingClientRect();
+                const scaleX = containerRect.width / canvas.width;
+                const scaleY = containerRect.height / canvas.height;
+                
+                canvasRegion = {
+                    x: result.x * scaleX,
+                    y: result.y * scaleY,
+                    width: result.width * scaleX,
+                    height: result.height * scaleY
+                };
+                
+                // Add visualization for debugging (can be removed in production)
+                const debugOutline = document.createElement('div');
+                debugOutline.style.position = 'absolute';
+                debugOutline.style.border = '2px dashed red';
+                debugOutline.style.left = canvasRegion.x + 'px';
+                debugOutline.style.top = canvasRegion.y + 'px';
+                debugOutline.style.width = canvasRegion.width + 'px';
+                debugOutline.style.height = canvasRegion.height + 'px';
+                debugOutline.style.pointerEvents = 'none';
+                imageContainer.appendChild(debugOutline);
+            } else {
+                console.log("Canvas not detected");
+                fallbackCanvasDetection();
+            }
         }
     } catch (error) {
         console.error("Error in canvas detection:", error);
@@ -232,75 +275,134 @@ function detectCanvasRegion(img) {
     }
 }
 
-function smoothWhiteMap(whiteMap, width, height) {
-    // Create a copy of the white map
-    const smoothedMap = [];
-    for (let y = 0; y < height; y++) {
-        smoothedMap[y] = [...whiteMap[y]];
-    }
-    
-    // Simple smoothing: if a pixel is surrounded by mostly white pixels, make it white
-    for (let y = 1; y < height - 1; y++) {
-        for (let x = 1; x < width - 1; x++) {
-            // Skip pixels that are already white
-            if (whiteMap[y][x] === 1) continue;
-            
-            // Count white neighbors (8-connectivity)
-            let whiteNeighbors = 0;
-            for (let dy = -1; dy <= 1; dy++) {
-                for (let dx = -1; dx <= 1; dx++) {
-                    if (dx === 0 && dy === 0) continue; // Skip the pixel itself
-                    if (whiteMap[y + dy][x + dx] === 1) {
-                        whiteNeighbors++;
+function smoothWhiteMap(whiteMap, width, height, passes = 1) {
+    for (let pass = 0; pass < passes; pass++) {
+        // Create a copy of the white map
+        const smoothedMap = [];
+        for (let y = 0; y < height; y++) {
+            smoothedMap[y] = [...whiteMap[y]];
+        }
+        
+        // More aggressive smoothing: more neighbors = white
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                // Skip pixels that are already white
+                if (whiteMap[y][x] === 1) continue;
+                
+                // Count white neighbors (8-connectivity)
+                let whiteNeighbors = 0;
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        if (dx === 0 && dy === 0) continue; // Skip the pixel itself
+                        if (whiteMap[y + dy][x + dx] === 1) {
+                            whiteNeighbors++;
+                        }
                     }
                 }
+                
+                // If 4 or more neighbors are white, make this pixel white too
+                if (whiteNeighbors >= 4) {
+                    smoothedMap[y][x] = 1;
+                }
             }
-            
-            // If 5 or more neighbors are white, make this pixel white too
-            if (whiteNeighbors >= 5) {
-                smoothedMap[y][x] = 1;
+        }
+        
+        // Copy the smoothed map back to the original
+        for (let y = 0; y < height; y++) {
+            whiteMap[y] = [...smoothedMap[y]];
+        }
+    }
+}
+
+function findCanvasComponents(whiteMap, width, height) {
+    // Implementation of connected components analysis to find white areas
+    const visited = Array(height).fill().map(() => Array(width).fill(false));
+    const components = [];
+    
+    // Minimum area for a component to be considered a canvas
+    const MIN_AREA = width * height * 0.01; // At least 1% of image area
+    
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (whiteMap[y][x] === 1 && !visited[y][x]) {
+                // Found a new component
+                const component = {
+                    points: [],
+                    area: 0
+                };
+                
+                // Use flood fill to find all connected white pixels
+                const queue = [{x, y}];
+                visited[y][x] = true;
+                
+                while (queue.length > 0) {
+                    const current = queue.shift();
+                    component.points.push(current);
+                    component.area++;
+                    
+                    // Check 8-connected neighbors
+                    const directions = [
+                        {dx: -1, dy: -1}, {dx: 0, dy: -1}, {dx: 1, dy: -1},
+                        {dx: -1, dy: 0},                   {dx: 1, dy: 0},
+                        {dx: -1, dy: 1},  {dx: 0, dy: 1},  {dx: 1, dy: 1}
+                    ];
+                    
+                    for (const dir of directions) {
+                        const nx = current.x + dir.dx;
+                        const ny = current.y + dir.dy;
+                        
+                        if (nx >= 0 && nx < width && ny >= 0 && ny < height && 
+                            whiteMap[ny][nx] === 1 && !visited[ny][nx]) {
+                            queue.push({x: nx, y: ny});
+                            visited[ny][nx] = true;
+                        }
+                    }
+                }
+                
+                // Only consider components that are large enough
+                if (component.area >= MIN_AREA) {
+                    components.push(component);
+                }
             }
         }
     }
     
-    // Copy the smoothed map back to the original
-    for (let y = 0; y < height; y++) {
-        whiteMap[y] = [...smoothedMap[y]];
-    }
+    return components;
 }
 
-function fallbackCanvasDetection() {
-    // Fallback method: define a reasonable canvas region in the center
-    const containerRect = imageContainer.getBoundingClientRect();
-    const centerX = containerRect.width / 2;
-    const centerY = containerRect.height / 2;
+function visualizeCanvasShape(points, region) {
+    // Remove any previous visualizations
+    const existingVisualizations = document.querySelectorAll('.canvas-visualization');
+    existingVisualizations.forEach(el => el.remove());
     
-    // Define a region that's 30% of the container width and 40% of the height
-    const width = containerRect.width * 0.3;
-    const height = containerRect.height * 0.4;
+    // Create div for the bounding box
+    const boundingBox = document.createElement('div');
+    boundingBox.className = 'canvas-visualization';
+    boundingBox.style.position = 'absolute';
+    boundingBox.style.border = '2px dashed red';
+    boundingBox.style.left = region.x + 'px';
+    boundingBox.style.top = region.y + 'px';
+    boundingBox.style.width = region.width + 'px';
+    boundingBox.style.height = region.height + 'px';
+    boundingBox.style.pointerEvents = 'none';
+    imageContainer.appendChild(boundingBox);
     
-    canvasRegion = {
-        x: centerX - width / 2,
-        y: centerY - height / 2,
-        width: width,
-        height: height
-    };
+    // Create an SVG to visualize the actual shape
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.className = 'canvas-visualization';
+    svg.setAttribute("style", "position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;");
     
-    console.log("Using fallback canvas region:", canvasRegion);
+    // Create a polygon from the points
+    const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    const pointsString = points.map(p => `${p.x},${p.y}`).join(' ');
+    polygon.setAttribute("points", pointsString);
+    polygon.setAttribute("style", "fill: rgba(0, 255, 0, 0.2); stroke: green; stroke-width: 1;");
     
-    // Add visualization for the fallback region
-    const debugOutline = document.createElement('div');
-    debugOutline.style.position = 'absolute';
-    debugOutline.style.border = '2px dashed orange';
-    debugOutline.style.left = canvasRegion.x + 'px';
-    debugOutline.style.top = canvasRegion.y + 'px';
-    debugOutline.style.width = canvasRegion.width + 'px';
-    debugOutline.style.height = canvasRegion.height + 'px';
-    debugOutline.style.pointerEvents = 'none';
-    imageContainer.appendChild(debugOutline);
+    svg.appendChild(polygon);
+    imageContainer.appendChild(svg);
 }
 
-function findLargestWhiteRectangle(grid, width, height) {
+function findLargestWhiteRectangle(whiteMap, width, height) {
     let maxArea = 0;
     let maxRect = null;
     
@@ -314,10 +416,10 @@ function findLargestWhiteRectangle(grid, width, height) {
     for (let startY = 0; startY < height; startY++) {
         for (let startX = 0; startX < width; startX++) {
             // Only process if this pixel is white
-            if (grid[startY][startX] === 1) {
+            if (whiteMap[startY][startX] === 1) {
                 // Find maximum width
                 let maxWidth = 0;
-                while (startX + maxWidth < width && grid[startY][startX + maxWidth] === 1) {
+                while (startX + maxWidth < width && whiteMap[startY][startX + maxWidth] === 1) {
                     maxWidth++;
                 }
                 
@@ -339,7 +441,7 @@ function findLargestWhiteRectangle(grid, width, height) {
                         }
                         
                         totalCount++;
-                        if (grid[startY + maxHeight][startX + x] !== 1) {
+                        if (whiteMap[startY + maxHeight][startX + x] !== 1) {
                             nonWhiteCount++;
                             
                             // If too many non-white pixels in this row, stop expanding
@@ -375,7 +477,44 @@ function findLargestWhiteRectangle(grid, width, height) {
     return maxRect;
 }
 
+function fallbackCanvasDetection() {
+    // Fallback method: define a reasonable canvas region in the center
+    const containerRect = imageContainer.getBoundingClientRect();
+    const centerX = containerRect.width / 2;
+    const centerY = containerRect.height / 2;
+    
+    // Define a region that's 30% of the container width and 40% of the height
+    const width = containerRect.width * 0.3;
+    const height = containerRect.height * 0.4;
+    
+    canvasRegion = {
+        x: centerX - width / 2,
+        y: centerY - height / 2,
+        width: width,
+        height: height
+    };
+    
+    console.log("Using fallback canvas region:", canvasRegion);
+    
+    // Add visualization for the fallback region
+    const debugOutline = document.createElement('div');
+    debugOutline.style.position = 'absolute';
+    debugOutline.style.border = '2px dashed orange';
+    debugOutline.style.left = canvasRegion.x + 'px';
+    debugOutline.style.top = canvasRegion.y + 'px';
+    debugOutline.style.width = canvasRegion.width + 'px';
+    debugOutline.style.height = canvasRegion.height + 'px';
+    debugOutline.style.pointerEvents = 'none';
+    imageContainer.appendChild(debugOutline);
+}
+
 function isPointInCanvas(x, y) {
+    // First check if there's a specific canvas shape detected
+    if (canvasShape && canvasShape.length > 0) {
+        return isPointInPolygon(x, y, canvasShape);
+    }
+    
+    // Fallback to bounding box check
     if (!canvasRegion) return false;
     
     return (
@@ -384,6 +523,23 @@ function isPointInCanvas(x, y) {
         y >= canvasRegion.y && 
         y <= canvasRegion.y + canvasRegion.height
     );
+}
+
+function isPointInPolygon(x, y, polygon) {
+    // Ray-casting algorithm to determine if a point is inside a polygon
+    let inside = false;
+    
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i].x, yi = polygon[i].y;
+        const xj = polygon[j].x, yj = polygon[j].y;
+        
+        const intersect = ((yi > y) !== (yj > y)) &&
+            (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            
+        if (intersect) inside = !inside;
+    }
+    
+    return inside;
 }
 
 function moveMagnifier(e) {
