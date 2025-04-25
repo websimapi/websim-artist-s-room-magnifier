@@ -27,10 +27,24 @@ export function addDebugOutline(region, color = 'red', thickness = 2, opacity = 
     debugOutline.style.zIndex = '1000';
     debugOutline.style.opacity = opacity;
     debugOutline.className = 'debug-outline';
+    
+    // Important: add a resize observer to update the outline when container size changes
+    const resizeObserver = new ResizeObserver(() => {
+        if (region && canvasRegionRelative) {
+            const containerRect = imageContainer.getBoundingClientRect();
+            debugOutline.style.left = Math.round(canvasRegionRelative.xPercent * containerRect.width) + 'px';
+            debugOutline.style.top = Math.round(canvasRegionRelative.yPercent * containerRect.height) + 'px';
+            debugOutline.style.width = Math.round(canvasRegionRelative.widthPercent * containerRect.width) + 'px';
+            debugOutline.style.height = Math.round(canvasRegionRelative.heightPercent * containerRect.height) + 'px';
+        }
+    });
+    
+    resizeObserver.observe(imageContainer);
     imageContainer.appendChild(debugOutline);
     
     // Add to the list of debug elements for cleanup
     debugElements.push(debugOutline);
+    debugOutline._resizeObserver = resizeObserver; // Store observer reference for cleanup
     
     return debugOutline;
 }
@@ -41,6 +55,10 @@ export function addDebugOutline(region, color = 'red', thickness = 2, opacity = 
 export function clearDebugElements() {
     debugElements.forEach(el => {
         if (el && el.parentNode) {
+            // Disconnect any resize observers
+            if (el._resizeObserver) {
+                el._resizeObserver.disconnect();
+            }
             el.parentNode.removeChild(el);
         }
     });

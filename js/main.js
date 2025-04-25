@@ -54,13 +54,20 @@ function handleWindowResize() {
     const imageContainer = document.getElementById('image-container');
     const containerRect = imageContainer.getBoundingClientRect();
     
+    // Verify container has actual dimensions before proceeding
+    if (containerRect.width === 0 || containerRect.height === 0) {
+        console.warn("Container has no dimensions yet, delaying resize handling");
+        setTimeout(handleWindowResize, 100); // Try again in 100ms
+        return;
+    }
+    
     // Completely recalculate the canvas region from relative values
     if (canvasRegionRelative) {
-        // Update canvas region from relative position
-        canvasRegion.x = canvasRegionRelative.xPercent * containerRect.width;
-        canvasRegion.y = canvasRegionRelative.yPercent * containerRect.height;
-        canvasRegion.width = canvasRegionRelative.widthPercent * containerRect.width;
-        canvasRegion.height = canvasRegionRelative.heightPercent * containerRect.height;
+        // Update canvas region from relative position - use Math.round for pixel precision
+        canvasRegion.x = Math.round(canvasRegionRelative.xPercent * containerRect.width);
+        canvasRegion.y = Math.round(canvasRegionRelative.yPercent * containerRect.height);
+        canvasRegion.width = Math.round(canvasRegionRelative.widthPercent * containerRect.width);
+        canvasRegion.height = Math.round(canvasRegionRelative.heightPercent * containerRect.height);
         
         console.log('Repositioned canvas region after resize:', canvasRegion);
         

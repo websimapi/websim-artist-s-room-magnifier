@@ -359,7 +359,7 @@ export function updateCanvasRegionFromRelative() {
         canvasRegion = {};
     }
     
-    // Update absolute positions based on current container size
+    // Update absolute positions based on current container size - use Math.round for pixel precision
     canvasRegion.x = Math.round(canvasRegionRelative.xPercent * containerRect.width);
     canvasRegion.y = Math.round(canvasRegionRelative.yPercent * containerRect.height);
     canvasRegion.width = Math.round(canvasRegionRelative.widthPercent * containerRect.width);
