@@ -105,9 +105,10 @@ export function setupResizeTools() {
         
         // Update the shared canvasRegion reference
         Object.assign(canvasRegion, newCanvasRegion);
-        
-        console.log('Canvas region updated:', canvasRegion);
-        
+
+        // Immediately update canvas normalized proportions for scaling with container
+        storeCanvasProportions();
+
         // Clean up resize elements and handle outline visibility
         endResizeMode();
     });
@@ -276,23 +277,20 @@ function stopResize() {
     document.removeEventListener('mousemove', doResize);
     document.removeEventListener('mouseup', stopResize);
     activeHandle = null;
-    
-    // Immediately update canvas proportions after any resize action
+
+    // Immediately update canvas proportions after any resize action.
     if (resizeOutline) {
         const imageContainer = document.getElementById('image-container');
         const containerRect = imageContainer.getBoundingClientRect();
         const rect = resizeOutline.getBoundingClientRect();
         
-        // Update canvas region with new dimensions
         Object.assign(canvasRegion, {
             x: rect.left - containerRect.left,
             y: rect.top - containerRect.top,
             width: rect.width,
             height: rect.height
         });
-        
-        // Store the new proportions right away
-        storeCanvasProportions();
+        storeCanvasProportions(); // Ensure proportions used for px-perfect outline after resize
     }
 }
 
