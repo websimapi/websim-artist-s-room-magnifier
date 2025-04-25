@@ -1,8 +1,90 @@
-import { addDebugOutline } from './debug.js';
+import { addDebugOutline, clearDebugElements } from './debug.js';
 
 // Shared state
 export let canvasRegion = null;
-export let originalCanvasRatio = null; // Stores original canvas proportions relative to container
+export let outlineVisible = true; // Track outline visibility state
+
+// Store original canvas detection proportions
+let canvasProportions = {
+    xPercent: 0,
+    yPercent: 0,
+    widthPercent: 0,
+    heightPercent: 0
+};
+
+/**
+ * Updates the canvas region when window is resized
+ */
+export function updateCanvasRegionOnResize() {
+    if (!canvasRegion) return;
+    
+    const imageContainer = document.getElementById('image-container');
+    const containerRect = imageContainer.getBoundingClientRect();
+    
+    // Always use stored proportions to recalculate position
+    if (canvasProportions.widthPercent > 0) {
+        canvasRegion = {
+            x: containerRect.width * canvasProportions.xPercent,
+            y: containerRect.height * canvasProportions.yPercent,
+            width: containerRect.width * canvasProportions.widthPercent,
+            height: containerRect.height * canvasProportions.heightPercent
+        };
+        
+        console.log('Resized canvas region:', canvasRegion);
+    } else {
+        // Calculate and store proportions if not already stored
+        storeCanvasProportions();
+    }
+    
+    // Update the outline if it's visible
+    if (outlineVisible) {
+        clearDebugElements();
+        addDebugOutline(canvasRegion, 'red', 3, 1.0);
+    }
+    
+    // Update any existing resize outline
+    updateResizeOutline();
+}
+
+/**
+ * Updates the resize outline if currently in resize mode
+ */
+function updateResizeOutline() {
+    const resizeOutline = document.querySelector('#image-container > div[style*="dashed"]');
+    const resizeControls = document.getElementById('resize-controls');
+    
+    if (resizeOutline && canvasRegion) {
+        resizeOutline.style.left = canvasRegion.x + 'px';
+        resizeOutline.style.top = canvasRegion.y + 'px';
+        resizeOutline.style.width = canvasRegion.width + 'px';
+        resizeOutline.style.height = canvasRegion.height + 'px';
+        
+        // Update resize controls position
+        if (resizeControls.style.display !== 'none') {
+            resizeControls.style.left = (canvasRegion.x + canvasRegion.width - 80) + 'px';
+            resizeControls.style.top = (canvasRegion.y + canvasRegion.height - 40) + 'px';
+        }
+    }
+}
+
+/**
+ * Stores canvas proportions relative to container size
+ */
+export function storeCanvasProportions() {
+    if (!canvasRegion) return;
+    
+    const imageContainer = document.getElementById('image-container');
+    const containerRect = imageContainer.getBoundingClientRect();
+    
+    canvasProportions = {
+        xPercent: canvasRegion.x / containerRect.width,
+        yPercent: canvasRegion.y / containerRect.height,
+        widthPercent: canvasRegion.width / containerRect.width,
+        heightPercent: canvasRegion.height / containerRect.height
+    };
+    
+    console.log('Stored canvas proportions:', canvasProportions);
+}
 
 /**
  * Detects the canvas region in an image
@@ -44,7 +126,7 @@ export function detectCanvasRegion(img) {
                 const r = data[i], g = data[i + 1], b = data[i + 2];
                 
                 // Use our improved white detection
-                if (isWhiteOrGreyCanvas(r, g, b)) {
+                if (isVeryWhite(r, g, b)) {
                     whiteMap[y][x] = 1; 
                     whitePixelCount++;
                 } else {
@@ -138,17 +220,12 @@ export function detectCanvasRegion(img) {
             height: (bestCanvasRegion.maxY - bestCanvasRegion.minY + 1) * scaleY,
         };
 
-        // Store original ratios for responsive adjustments
-        originalCanvasRatio = {
-            xRatio: canvasRegion.x / containerRect.width,
-            yRatio: canvasRegion.y / containerRect.height, 
-            widthRatio: canvasRegion.width / containerRect.width,
-            heightRatio: canvasRegion.height / containerRect.height
-        };
-
         // Show debug outline
         addDebugOutline(canvasRegion, 'red', 3, 1.0);
         console.log('Canvas detected:', canvasRegion, bestCanvasRegion);
+
+        // After setting canvasRegion, store the proportions
+        storeCanvasProportions();
 
     } catch (e) {
         console.error("Canvas detection error", e);
@@ -157,39 +234,24 @@ export function detectCanvasRegion(img) {
 }
 
 /**
- * Determines if a pixel is in the white/grey range suitable for canvas detection
- * Enhanced to better handle shadows and grey tones
+ * Determines if a pixel is very white (or off-white)
  */
-function isWhiteOrGreyCanvas(r, g, b) {
-    // Lower minimum brightness to better capture shadows on canvas
-    const minBrightness = 200; // Lowered from 220
+function isVeryWhite(r, g, b) {
+    // More relaxed threshold for what's considered white
+    // We want to identify off-white and slightly colored white pixels too
+    const minWhite = 220; // Lowered from 225
+    const maxVariance = 25; // Increased from 15 to allow for shadows and slight color variations on canvas
     
-    // Increased max variance for colors to handle more off-white and grey tones
-    const maxVariance = 30; // Increased from 25
-    
-    // Average brightness
+    // Check average brightness first
     const avgBrightness = (r + g + b) / 3;
-    if (avgBrightness < minBrightness) {
-        // For darker pixels, check if they're potentially shadow areas on canvas
-        // (greys have very low saturation)
-        const maxVal = Math.max(r, g, b);
-        const minVal = Math.min(r, g, b);
-        const saturation = maxVal === 0 ? 0 : (maxVal - minVal) / maxVal;
-        
-        // If it's grey (very low saturation) and still reasonably bright, consider it canvas
-        if (saturation < 0.1 && avgBrightness > 180) {
-            return true;
-        }
-        return false;
-    }
+    if (avgBrightness < minWhite) return false;
     
-    // For brighter pixels, check saturation and color variance
+    // Check if it's fairly desaturated
     const maxVal = Math.max(r, g, b);
     const minVal = Math.min(r, g, b);
     const saturation = maxVal === 0 ? 0 : (maxVal - minVal) / maxVal;
     
-    // More permissive saturation threshold for white/grey canvas detection
-    return saturation < 0.18 && // Increased from 0.15
+    return saturation < 0.15 && // Low saturation is key for white areas
            Math.abs(r - g) < maxVariance &&
            Math.abs(r - b) < maxVariance &&
            Math.abs(g - b) < maxVariance;
@@ -335,49 +397,13 @@ export function fallbackCanvasDetection() {
         height: height
     };
     
-    // Store original ratios for responsive adjustments
-    originalCanvasRatio = {
-        xRatio: canvasRegion.x / containerRect.width,
-        yRatio: canvasRegion.y / containerRect.height, 
-        widthRatio: canvasRegion.width / containerRect.width,
-        heightRatio: canvasRegion.height / containerRect.height
-    };
-    
     console.log("Using fallback canvas region:", canvasRegion);
     
     // Add visualization for the fallback region
     addDebugOutline(canvasRegion, 'orange', 2);
-}
-
-/**
- * Updates canvas region dimensions on window resize
- */
-export function updateCanvasRegionOnResize() {
-    if (!canvasRegion || !originalCanvasRatio) return;
     
-    const imageContainer = document.getElementById('image-container');
-    const containerRect = imageContainer.getBoundingClientRect();
-    
-    // Calculate new position and dimensions based on original ratios
-    canvasRegion.x = containerRect.width * originalCanvasRatio.xRatio;
-    canvasRegion.y = containerRect.height * originalCanvasRatio.yRatio;
-    canvasRegion.width = containerRect.width * originalCanvasRatio.widthRatio;
-    canvasRegion.height = containerRect.height * originalCanvasRatio.heightRatio;
-    
-    // Get existing debug elements
-    const debugElements = document.querySelectorAll('#image-container > div[style*="border"]');
-    
-    // Update outline position if it exists
-    debugElements.forEach(el => {
-        if (el.style.border.includes('dashed')) {
-            el.style.left = canvasRegion.x + 'px';
-            el.style.top = canvasRegion.y + 'px';
-            el.style.width = canvasRegion.width + 'px';
-            el.style.height = canvasRegion.height + 'px';
-        }
-    });
-    
-    console.log('Canvas region updated on resize:', canvasRegion);
+    // After setting canvasRegion, store the proportions
+    storeCanvasProportions();
 }
 
 /**

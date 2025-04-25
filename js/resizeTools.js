@@ -1,4 +1,4 @@
-import { canvasRegion, isPointInCanvas, originalCanvasRatio } from './canvasDetection.js';
+import { canvasRegion, isPointInCanvas, storeCanvasProportions, outlineVisible } from './canvasDetection.js';
 import { clearDebugElements, addDebugOutline } from './debug.js';
 
 // Resize state variables
@@ -7,7 +7,6 @@ let resizeHandles = [];
 let resizeOutline = null;
 let activeHandle = null;
 let startX, startY, startWidth, startHeight, startLeft, startTop;
-let outlineVisible = true; // Track outline visibility state
 
 /**
  * Sets up resize tools and context menu
@@ -124,6 +123,7 @@ export function setupResizeTools() {
  * Toggles the visibility of the canvas outline
  */
 function toggleOutlineVisibility() {
+    // Use imported outlineVisible
     outlineVisible = !outlineVisible;
     clearDebugElements();
     
@@ -276,6 +276,24 @@ function stopResize() {
     document.removeEventListener('mousemove', doResize);
     document.removeEventListener('mouseup', stopResize);
     activeHandle = null;
+    
+    // Immediately update canvas proportions after any resize action
+    if (resizeOutline) {
+        const imageContainer = document.getElementById('image-container');
+        const containerRect = imageContainer.getBoundingClientRect();
+        const rect = resizeOutline.getBoundingClientRect();
+        
+        // Update canvas region with new dimensions
+        Object.assign(canvasRegion, {
+            x: rect.left - containerRect.left,
+            y: rect.top - containerRect.top,
+            width: rect.width,
+            height: rect.height
+        });
+        
+        // Store the new proportions right away
+        storeCanvasProportions();
+    }
 }
 
 /**
@@ -305,16 +323,8 @@ function endResizeMode() {
     document.body.style.cursor = 'auto';
     imageContainer.style.cursor = 'auto';
     
-    // Update the original canvas ratio after resizing
-    if (canvasRegion) {
-        const containerRect = imageContainer.getBoundingClientRect();
-        originalCanvasRatio = {
-            xRatio: canvasRegion.x / containerRect.width,
-            yRatio: canvasRegion.y / containerRect.height,
-            widthRatio: canvasRegion.width / containerRect.width,
-            heightRatio: canvasRegion.height / containerRect.height
-        };
-    }
+    // Make sure canvas proportions are stored for proper resizing
+    storeCanvasProportions();
     
     // Restore outline if it was visible before
     if (outlineVisible) {
@@ -322,12 +332,10 @@ function endResizeMode() {
         addDebugOutline(canvasRegion, 'red', 3, 1.0);
     }
     
-    // Important: Set isResizing to false BEFORE dispatching mousemove event
-    // so the magnifier logic works correctly
+    // Set isResizing to false BEFORE dispatching mousemove event
     isResizing = false;
     
     // Get current mouse position for accurate event triggering
-    // Use a more reliable method than window.event
     const lastMousePosition = window.lastKnownMousePosition || { x: 0, y: 0 };
     
     // Trigger a mousemove event to update cursor based on position

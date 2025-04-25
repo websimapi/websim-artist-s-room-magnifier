@@ -21,6 +21,23 @@ export function setupMagnifier() {
         magnifier.style.display = 'none';
         document.body.style.cursor = 'auto';
     });
+    
+    // Update magnifier on window resize
+    window.addEventListener('resize', updateMagnifierSize);
+}
+
+/**
+ * Updates the magnifier size based on container size
+ */
+export function updateMagnifierSize() {
+    const magnifier = document.getElementById('magnifier');
+    const imageContainer = document.getElementById('image-container');
+    
+    if (magnifier.style.backgroundImage) {
+        const containerWidth = imageContainer.offsetWidth;
+        const containerHeight = imageContainer.offsetHeight;
+        magnifier.style.backgroundSize = `${containerWidth * zoomLevel}px ${containerHeight * zoomLevel}px`;
+    }
 }
 
 /**
