@@ -346,7 +346,13 @@ export function updateCanvasRegionFromRelative() {
     if (!canvasRegionRelative) return false;
     
     const imageContainer = document.getElementById('image-container');
+    
+    // Wait for container to have actual dimensions
     const containerRect = imageContainer.getBoundingClientRect();
+    if (containerRect.width === 0 || containerRect.height === 0) {
+        console.warn("Container has zero dimensions, can't update canvas region");
+        return false;
+    }
     
     // Create canvasRegion if it doesn't exist
     if (!canvasRegion) {
@@ -354,10 +360,10 @@ export function updateCanvasRegionFromRelative() {
     }
     
     // Update absolute positions based on current container size
-    canvasRegion.x = canvasRegionRelative.xPercent * containerRect.width;
-    canvasRegion.y = canvasRegionRelative.yPercent * containerRect.height;
-    canvasRegion.width = canvasRegionRelative.widthPercent * containerRect.width;
-    canvasRegion.height = canvasRegionRelative.heightPercent * containerRect.height;
+    canvasRegion.x = Math.round(canvasRegionRelative.xPercent * containerRect.width);
+    canvasRegion.y = Math.round(canvasRegionRelative.yPercent * containerRect.height);
+    canvasRegion.width = Math.round(canvasRegionRelative.widthPercent * containerRect.width);
+    canvasRegion.height = Math.round(canvasRegionRelative.heightPercent * containerRect.height);
     
     console.log('Updated canvas region from relative:', canvasRegion);
     return true;
@@ -370,14 +376,20 @@ export function updateRelativeFromCanvasRegion() {
     if (!canvasRegion) return false;
     
     const imageContainer = document.getElementById('image-container');
+    
+    // Wait for container to have actual dimensions
     const containerRect = imageContainer.getBoundingClientRect();
+    if (containerRect.width === 0 || containerRect.height === 0) {
+        console.warn("Container has zero dimensions, can't update relative canvas region");
+        return false;
+    }
     
     // Create canvasRegionRelative if it doesn't exist
     if (!canvasRegionRelative) {
         canvasRegionRelative = {};
     }
     
-    // Calculate relative positions
+    // Calculate relative positions with higher precision
     canvasRegionRelative.xPercent = canvasRegion.x / containerRect.width;
     canvasRegionRelative.yPercent = canvasRegion.y / containerRect.height;
     canvasRegionRelative.widthPercent = canvasRegion.width / containerRect.width;

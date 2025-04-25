@@ -1,7 +1,7 @@
 import { generateAndSetImage } from './imageUtils.js';
 import { setupMagnifier } from './magnifier.js';
 import { setupResizeTools } from './resizeTools.js';
-import { updateCanvasRegionFromRelative, canvasRegion, outlineVisible } from './canvasDetection.js';
+import { updateCanvasRegionFromRelative, canvasRegion, canvasRegionRelative, outlineVisible } from './canvasDetection.js';
 import { clearDebugElements, addDebugOutline } from './debug.js';
 
 // Initialize components when the script loads
@@ -15,15 +15,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup resize tools (context menu & resize functionality)
     setupResizeTools();
     
-    // Handle window resize events - improved version
-    window.addEventListener('resize', handleWindowResize);
+    // Handle window resize events with debouncing
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+        // Clear previous timeout to implement debouncing
+        clearTimeout(resizeTimer);
+        
+        // Update immediately to prevent jarring UI shifts
+        updateMagnifierSize();
+        
+        // Schedule the more intensive operations after resize completes
+        resizeTimer = setTimeout(handleWindowResize, 200);
+    });
 });
 
 /**
- * Handles window resize events with improved outline management
+ * Updates just the magnifier size during resize
  */
-function handleWindowResize() {
-    // Update magnifier background size
+function updateMagnifierSize() {
     const magnifier = document.getElementById('magnifier');
     const imageContainer = document.getElementById('image-container');
     
@@ -32,22 +41,47 @@ function handleWindowResize() {
         const containerHeight = imageContainer.offsetHeight;
         magnifier.style.backgroundSize = `${containerWidth * 3}px ${containerHeight * 3}px`;
     }
+}
+
+/**
+ * Handles window resize events with improved outline management
+ */
+function handleWindowResize() {
+    console.log("Window resize completed, updating canvas region...");
     
-    // Update canvas region based on relative position
-    if (updateCanvasRegionFromRelative()) {
-        // If we have an outline and it should be visible, redraw it
+    // First ensure the relative position is accurate before updating
+    // This is crucial if the resize happened after a manual resize operation
+    const imageContainer = document.getElementById('image-container');
+    const containerRect = imageContainer.getBoundingClientRect();
+    
+    // Completely recalculate the canvas region from relative values
+    if (canvasRegionRelative) {
+        // Update canvas region from relative position
+        canvasRegion.x = canvasRegionRelative.xPercent * containerRect.width;
+        canvasRegion.y = canvasRegionRelative.yPercent * containerRect.height;
+        canvasRegion.width = canvasRegionRelative.widthPercent * containerRect.width;
+        canvasRegion.height = canvasRegionRelative.heightPercent * containerRect.height;
+        
+        console.log('Repositioned canvas region after resize:', canvasRegion);
+        
+        // Clear existing outlines and redraw if needed
+        clearDebugElements();
+        
+        // Only redraw outline if it should be visible
         if (outlineVisible) {
-            clearDebugElements();
             addDebugOutline(canvasRegion, 'red', 3, 1.0);
         }
-    }
-    
-    // Also update any debug outlines that might be visible
-    const debugElements = document.querySelectorAll('#image-container > div[style*="position: absolute"][style*="border"]');
-    if (debugElements.length > 0) {
-        clearDebugElements();
-        if (outlineVisible && canvasRegion) {
-            addDebugOutline(canvasRegion, 'red', 3, 1.0);
+        
+        // Force a mouse move event to update cursor if needed
+        if (window.lastKnownMousePosition) {
+            const event = new MouseEvent('mousemove', {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: window.lastKnownMousePosition.x,
+                clientY: window.lastKnownMousePosition.y
+            });
+            document.dispatchEvent(event);
         }
     }
 }
