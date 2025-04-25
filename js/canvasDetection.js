@@ -3,6 +3,7 @@ import { addDebugOutline } from './debug.js';
 // Shared state
 export let canvasRegion = null;
 export let canvasRegionRelative = null; // Store relative position (percentages)
+export let outlineVisible = true; // Export this so other modules can access it
 
 /**
  * Detects the canvas region in an image
@@ -339,18 +340,51 @@ export function fallbackCanvasDetection() {
 
 /**
  * Updates the canvas region based on relative position
+ * Returns true if the update was successful
  */
 export function updateCanvasRegionFromRelative() {
-    if (!canvasRegionRelative || !canvasRegion) return;
+    if (!canvasRegionRelative) return false;
     
     const imageContainer = document.getElementById('image-container');
     const containerRect = imageContainer.getBoundingClientRect();
+    
+    // Create canvasRegion if it doesn't exist
+    if (!canvasRegion) {
+        canvasRegion = {};
+    }
     
     // Update absolute positions based on current container size
     canvasRegion.x = canvasRegionRelative.xPercent * containerRect.width;
     canvasRegion.y = canvasRegionRelative.yPercent * containerRect.height;
     canvasRegion.width = canvasRegionRelative.widthPercent * containerRect.width;
     canvasRegion.height = canvasRegionRelative.heightPercent * containerRect.height;
+    
+    console.log('Updated canvas region from relative:', canvasRegion);
+    return true;
+}
+
+/**
+ * Updates the relative canvas region from absolute coordinates
+ */
+export function updateRelativeFromCanvasRegion() {
+    if (!canvasRegion) return false;
+    
+    const imageContainer = document.getElementById('image-container');
+    const containerRect = imageContainer.getBoundingClientRect();
+    
+    // Create canvasRegionRelative if it doesn't exist
+    if (!canvasRegionRelative) {
+        canvasRegionRelative = {};
+    }
+    
+    // Calculate relative positions
+    canvasRegionRelative.xPercent = canvasRegion.x / containerRect.width;
+    canvasRegionRelative.yPercent = canvasRegion.y / containerRect.height;
+    canvasRegionRelative.widthPercent = canvasRegion.width / containerRect.width;
+    canvasRegionRelative.heightPercent = canvasRegion.height / containerRect.height;
+    
+    console.log('Updated relative position:', canvasRegionRelative);
+    return true;
 }
 
 /**

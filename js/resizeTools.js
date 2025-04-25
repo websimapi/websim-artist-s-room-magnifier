@@ -1,4 +1,4 @@
-import { canvasRegion, canvasRegionRelative, isPointInCanvas } from './canvasDetection.js';
+import { canvasRegion, canvasRegionRelative, isPointInCanvas, updateRelativeFromCanvasRegion, outlineVisible as canvasOutlineVisible } from './canvasDetection.js';
 import { clearDebugElements, addDebugOutline } from './debug.js';
 
 // Resize state variables
@@ -126,6 +126,8 @@ export function setupResizeTools() {
 function toggleOutlineVisibility() {
     const toggleOutline = document.getElementById('toggle-outline');
     outlineVisible = !outlineVisible;
+    // Update the exported variable as well
+    window.canvasOutlineVisible = outlineVisible;
     clearDebugElements();
     
     // Update menu text based on current state
@@ -305,16 +307,9 @@ function endResizeMode() {
     document.body.style.cursor = 'auto';
     imageContainer.style.cursor = 'auto';
     
-    // Update relative position after resize
+    // Update relative position after resize for better scaling
     if (canvasRegion) {
-        const containerRect = imageContainer.getBoundingClientRect();
-        canvasRegionRelative = {
-            xPercent: canvasRegion.x / containerRect.width,
-            yPercent: canvasRegion.y / containerRect.height,
-            widthPercent: canvasRegion.width / containerRect.width,
-            heightPercent: canvasRegion.height / containerRect.height
-        };
-        console.log('Updated relative position after resize:', canvasRegionRelative);
+        updateRelativeFromCanvasRegion();
     }
     
     // Restore outline if it was visible before
