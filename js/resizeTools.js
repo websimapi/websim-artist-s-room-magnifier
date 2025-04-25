@@ -1,4 +1,4 @@
-import { canvasRegion, canvasRegionRelative, isPointInCanvas, updateRelativeFromCanvasRegion, outlineVisible as canvasOutlineVisible } from './canvasDetection.js';
+import { canvasRegion, isPointInCanvas, originalCanvasRatio } from './canvasDetection.js';
 import { clearDebugElements, addDebugOutline } from './debug.js';
 
 // Resize state variables
@@ -124,13 +124,11 @@ export function setupResizeTools() {
  * Toggles the visibility of the canvas outline
  */
 function toggleOutlineVisibility() {
-    const toggleOutline = document.getElementById('toggle-outline');
     outlineVisible = !outlineVisible;
-    // Update the exported variable as well
-    window.canvasOutlineVisible = outlineVisible;
     clearDebugElements();
     
     // Update menu text based on current state
+    const toggleOutline = document.getElementById('toggle-outline');
     toggleOutline.textContent = outlineVisible ? 'Hide Outline' : 'Show Outline';
     
     // If visible, redraw the outline
@@ -307,11 +305,15 @@ function endResizeMode() {
     document.body.style.cursor = 'auto';
     imageContainer.style.cursor = 'auto';
     
-    // IMPORTANT: Update relative position after resize
-    // This ensures browser resizing will maintain proper position
+    // Update the original canvas ratio after resizing
     if (canvasRegion) {
-        updateRelativeFromCanvasRegion();
-        console.log("Updated relative positions after resize:", canvasRegionRelative);
+        const containerRect = imageContainer.getBoundingClientRect();
+        originalCanvasRatio = {
+            xRatio: canvasRegion.x / containerRect.width,
+            yRatio: canvasRegion.y / containerRect.height,
+            widthRatio: canvasRegion.width / containerRect.width,
+            heightRatio: canvasRegion.height / containerRect.height
+        };
     }
     
     // Restore outline if it was visible before
@@ -321,9 +323,11 @@ function endResizeMode() {
     }
     
     // Important: Set isResizing to false BEFORE dispatching mousemove event
+    // so the magnifier logic works correctly
     isResizing = false;
     
     // Get current mouse position for accurate event triggering
+    // Use a more reliable method than window.event
     const lastMousePosition = window.lastKnownMousePosition || { x: 0, y: 0 };
     
     // Trigger a mousemove event to update cursor based on position
