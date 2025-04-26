@@ -183,6 +183,19 @@ export function moveMagnifier(e) {
     const hasBrush = activeTools.includes('brush');
     const hasMagnifier = activeTools.includes('magnifier');
     
+    // Auto-switch to brush tool when entering canvas area
+    if (isOverCanvas && !hasBrush) {
+        // Add brush to active tools if not already active
+        if (!activeTools.includes('brush')) {
+            activeTools.push('brush');
+            // Update visual indication in tool belt
+            const brushSlot = document.querySelector('.tool-slot[data-tool="brush"]');
+            if (brushSlot) {
+                brushSlot.classList.add('active');
+            }
+        }
+    }
+    
     // Set appropriate cursor based on tools and position
     if (isOverCanvas) {
         // Inside canvas area - always show brush cursor when inside canvas
