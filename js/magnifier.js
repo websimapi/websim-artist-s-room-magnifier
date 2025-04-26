@@ -6,6 +6,9 @@ const zoomLevel = 3; // How much to zoom in
 // Shared color state
 let selectedColor = 'black';
 
+// Track painting state
+let isPainting = false;
+
 /**
  * Sets up magnifier functionality
  */
@@ -39,6 +42,10 @@ export function setupMagnifier() {
     
     // Add click handler for color selection
     imageContainer.addEventListener('click', handleClick);
+    
+    // Add mouse events for click-and-drag painting
+    imageContainer.addEventListener('mousedown', startPainting);
+    imageContainer.addEventListener('mouseup', stopPainting);
 }
 
 /**
@@ -101,6 +108,33 @@ function drawDot(x, y, color) {
 }
 
 /**
+ * Start painting on mouse down
+ */
+function startPainting(e) {
+    const imageContainer = document.getElementById('image-container');
+    const activeTools = window.activeTools || [];
+    
+    // Get cursor position relative to the container
+    const rect = imageContainer.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Check if we're over the canvas and brush tool is active
+    if (isPointInCanvas(x, y) && activeTools.includes('brush')) {
+        isPainting = true;
+        // Draw initial dot
+        drawDot(x, y, selectedColor);
+    }
+}
+
+/**
+ * Stop painting on mouse up
+ */
+function stopPainting() {
+    isPainting = false;
+}
+
+/**
  * Update the brush cursor with selected color
  */
 export function updateBrushCursor() {
@@ -135,6 +169,11 @@ export function moveMagnifier(e) {
     // Calculate cursor position relative to the container
     const x = clientX - rect.left;
     const y = clientY - rect.top;
+    
+    // Draw while dragging if painting is active
+    if (isPainting && isPointInCanvas(x, y)) {
+        drawDot(x, y, selectedColor);
+    }
 
     // Check if cursor is over the canvas
     const isOverCanvas = isPointInCanvas(x, y);
