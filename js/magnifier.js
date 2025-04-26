@@ -136,6 +136,7 @@ function createColorSampler() {
 function sampleColorAtPosition(x, y) {
     const imageContainer = document.getElementById('image-container');
     const colorSampler = document.getElementById('color-sampler');
+    const magnifier = document.getElementById('magnifier');
     
     // Create temporary canvas to sample color
     const canvas = document.createElement('canvas');
@@ -175,9 +176,12 @@ function sampleColorAtPosition(x, y) {
                 const pixelData = ctx.getImageData(pixelX, pixelY, 1, 1).data;
                 const color = `rgb(${pixelData[0]}, ${pixelData[1]}, ${pixelData[2]})`;
                 colorSampler.style.backgroundColor = color;
+                // Update magnifier border color to match sampled pixel
+                magnifier.style.borderColor = color;
             } catch (e) {
                 console.warn('Could not sample color due to CORS policy:', e);
                 colorSampler.style.backgroundColor = 'rgba(255, 0, 0, 0.5)'; // Fallback color
+                magnifier.style.borderColor = 'rgba(255, 0, 0, 0.5)'; // Fallback color for border
             }
         }
     };
@@ -185,6 +189,7 @@ function sampleColorAtPosition(x, y) {
     img.onerror = () => {
         console.warn('Failed to load image for color sampling');
         colorSampler.style.backgroundColor = 'rgba(255, 0, 0, 0.5)'; // Fallback color
+        magnifier.style.borderColor = 'rgba(255, 0, 0, 0.5)'; // Fallback color for border
     };
     
     img.src = bgImage;
