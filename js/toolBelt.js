@@ -13,19 +13,53 @@ export function setupToolBelt() {
         magnifierSlot.classList.add('active');
     }
     
-    // Add click event listeners to tool slots
+    // Initialize activeTools array to track multiple active tools
+    window.activeTools = ['magnifier'];
+    window.activeTool = 'magnifier';
+    
+    // Add click and contextmenu event listeners to tool slots
     toolSlots.forEach(slot => {
         if (slot.dataset.tool) { // Only add listener to slots that have tools
-            slot.addEventListener('click', () => {
+            // Left click selects a single tool
+            slot.addEventListener('click', (e) => {
                 // Remove active class from all tools
                 toolSlots.forEach(s => s.classList.remove('active'));
                 
                 // Add active class to clicked tool
                 slot.classList.add('active');
                 
-                // Set the current tool
+                // Set the current primary tool
                 const toolType = slot.dataset.tool;
+                window.activeTools = [toolType]; // Reset to just this tool
                 setActiveTool(toolType);
+            });
+            
+            // Right click toggles a tool on/off without deselecting others
+            slot.addEventListener('contextmenu', (e) => {
+                e.preventDefault(); // Prevent default context menu
+                
+                const toolType = slot.dataset.tool;
+                
+                // Toggle tool in activeTools array
+                if (window.activeTools.includes(toolType)) {
+                    // Only remove if it's not the last active tool
+                    if (window.activeTools.length > 1) {
+                        window.activeTools = window.activeTools.filter(t => t !== toolType);
+                        slot.classList.remove('active');
+                        
+                        // If we removed the current primary tool, set a new one
+                        if (window.activeTool === toolType) {
+                            window.activeTool = window.activeTools[0];
+                        }
+                    }
+                } else {
+                    // Add tool to active tools
+                    window.activeTools.push(toolType);
+                    slot.classList.add('active');
+                }
+                
+                // Update cursor based on active tools
+                updateActiveToolCursor();
             });
         }
     });
@@ -50,7 +84,15 @@ function setActiveTool(toolType) {
     // Store the active tool for reference in other components
     window.activeTool = toolType;
     
-    // Trigger a mousemove event to update the cursor based on the new tool
+    // Update cursor based on active tools
+    updateActiveToolCursor();
+}
+
+/**
+ * Updates cursor based on active tools and position
+ */
+function updateActiveToolCursor() {
+    // Trigger a mousemove event to update the cursor based on active tools
     if (window.lastKnownMousePosition) {
         const event = new MouseEvent('mousemove', {
             bubbles: true,

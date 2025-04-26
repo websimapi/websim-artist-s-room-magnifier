@@ -49,10 +49,15 @@ export function moveMagnifier(e) {
     // Check if cursor is over the canvas
     const isOverCanvas = isPointInCanvas(x, y);
     
-    // Set appropriate cursor based on tool and position
+    // Multiple active tools support
+    const activeTools = window.activeTools || [];
+    const hasBrush = activeTools.includes('brush');
+    const hasMagnifier = activeTools.includes('magnifier');
+    
+    // Set appropriate cursor based on tools and position
     if (isOverCanvas) {
         // Inside canvas area
-        if (window.activeTool === 'brush') {
+        if (hasBrush) {
             // Show brush cursor inside canvas when brush tool is active
             magnifier.style.display = 'none';
             document.body.style.cursor = 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 24 24\'%3E%3Cpath fill=\'%23000000\' d=\'M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z\'/%3E%3C/svg%3E") 0 24, auto';
@@ -65,7 +70,7 @@ export function moveMagnifier(e) {
         }
     } else {
         // Outside canvas area
-        if (window.activeTool === 'magnifier') {
+        if (hasMagnifier) {
             // Show magnifier outside canvas when magnifier tool is active
             // Position the magnifier element centered on the cursor
             magnifier.style.left = `${clientX}px`;
