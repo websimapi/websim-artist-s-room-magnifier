@@ -22,16 +22,43 @@ export function setupToolBelt() {
         if (slot.dataset.tool) { // Only add listener to slots that have tools
             // Left click selects a single tool
             slot.addEventListener('click', (e) => {
-                // Remove active class from all tools
-                toolSlots.forEach(s => s.classList.remove('active'));
-                
-                // Add active class to clicked tool
-                slot.classList.add('active');
-                
-                // Set the current primary tool
                 const toolType = slot.dataset.tool;
-                window.activeTools = [toolType]; // Reset to just this tool
-                setActiveTool(toolType);
+                
+                // Special handling for magnifier tool - toggle on/off
+                if (toolType === 'magnifier') {
+                    if (window.activeTools.includes('magnifier')) {
+                        // Remove magnifier if it's active
+                        window.activeTools = window.activeTools.filter(t => t !== 'magnifier');
+                        slot.classList.remove('active');
+                    } else {
+                        // Add magnifier if it's not active
+                        window.activeTools.push('magnifier');
+                        slot.classList.add('active');
+                    }
+                } else {
+                    // For other tools, behave as before
+                    // Remove active class from all tools except magnifier
+                    toolSlots.forEach(s => {
+                        if (s.dataset.tool !== 'magnifier') {
+                            s.classList.remove('active');
+                        }
+                    });
+                    
+                    // Add active class to clicked tool
+                    slot.classList.add('active');
+                    
+                    // Set the current tools
+                    const magnifierActive = window.activeTools.includes('magnifier');
+                    window.activeTools = magnifierActive ? [toolType, 'magnifier'] : [toolType];
+                }
+                
+                // Update the primary active tool for reference
+                if (window.activeTools.length > 0) {
+                    window.activeTool = window.activeTools[0];
+                }
+                
+                // Update cursor based on active tools
+                updateActiveToolCursor();
             });
             
             // Right click toggles a tool on/off without deselecting others
