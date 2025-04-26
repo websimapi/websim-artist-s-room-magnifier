@@ -21,6 +21,12 @@ export function setupMagnifier() {
         magnifier.style.display = 'none';
         document.body.style.cursor = 'auto';
     });
+
+    // Create color sampler element
+    const colorSampler = document.createElement('div');
+    colorSampler.id = 'color-sampler';
+    colorSampler.style.display = 'none';
+    document.body.appendChild(colorSampler);
 }
 
 /**
@@ -29,6 +35,7 @@ export function setupMagnifier() {
 export function moveMagnifier(e) {
     const imageContainer = document.getElementById('image-container');
     const magnifier = document.getElementById('magnifier');
+    const colorSampler = document.getElementById('color-sampler') || createColorSampler();
     
     // Skip if we're resizing
     if (window.isResizing) return;
@@ -82,13 +89,103 @@ export function moveMagnifier(e) {
 
             magnifier.style.backgroundPosition = `${bgX}px ${bgY}px`;
 
-            // Show the magnifier
+            // Sample color under the cursor
+            sampleColorAtPosition(x, y);
+
+            // Show the magnifier and hide cursor
             magnifier.style.display = 'block';
+            document.body.style.cursor = 'none';
+            imageContainer.style.cursor = 'none';
+            
+            // Show color sampler instead
+            colorSampler.style.display = 'block';
+            colorSampler.style.left = `${clientX}px`;
+            colorSampler.style.top = `${clientY}px`;
         } else {
             // Normal cursor outside canvas for any other tool
             magnifier.style.display = 'none';
+            colorSampler.style.display = 'none';
             document.body.style.cursor = 'auto';
             imageContainer.style.cursor = 'auto';
         }
     }
+}
+
+/**
+ * Creates the color sampler element if it doesn't exist
+ */
+function createColorSampler() {
+    const colorSampler = document.createElement('div');
+    colorSampler.id = 'color-sampler';
+    colorSampler.style.position = 'fixed';
+    colorSampler.style.width = '10px';
+    colorSampler.style.height = '10px';
+    colorSampler.style.borderRadius = '50%';
+    colorSampler.style.border = '1px solid white';
+    colorSampler.style.boxShadow = '0 0 2px rgba(0,0,0,0.5)';
+    colorSampler.style.transform = 'translate(-50%, -50%)';
+    colorSampler.style.pointerEvents = 'none';
+    colorSampler.style.zIndex = '1500';
+    document.body.appendChild(colorSampler);
+    return colorSampler;
+}
+
+/**
+ * Samples color at the specified position in the image
+ */
+function sampleColorAtPosition(x, y) {
+    const imageContainer = document.getElementById('image-container');
+    const colorSampler = document.getElementById('color-sampler');
+    
+    // Create temporary canvas to sample color
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    
+    // Use the current background image
+    const computedStyle = getComputedStyle(imageContainer);
+    const bgImage = computedStyle.backgroundImage.replace(/url\(['"]?(.*?)['"]?\)/i, '$1');
+    
+    if (!bgImage || bgImage === 'none') {
+        return;
+    }
+    
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0, img.width, img.height);
+        
+        // Calculate the pixel coordinates in the original image
+        const rect = imageContainer.getBoundingClientRect();
+        const imgWidth = img.width;
+        const imgHeight = img.height;
+        const containerWidth = rect.width;
+        const containerHeight = rect.height;
+        
+        // Scale coordinates to match image dimensions
+        const scaleX = imgWidth / containerWidth;
+        const scaleY = imgHeight / containerHeight;
+        const pixelX = Math.floor(x * scaleX);
+        const pixelY = Math.floor(y * scaleY);
+        
+        // Get pixel data if coordinates are within bounds
+        if (pixelX >= 0 && pixelX < imgWidth && pixelY >= 0 && pixelY < imgHeight) {
+            try {
+                const pixelData = ctx.getImageData(pixelX, pixelY, 1, 1).data;
+                const color = `rgb(${pixelData[0]}, ${pixelData[1]}, ${pixelData[2]})`;
+                colorSampler.style.backgroundColor = color;
+            } catch (e) {
+                console.warn('Could not sample color due to CORS policy:', e);
+                colorSampler.style.backgroundColor = 'rgba(255, 0, 0, 0.5)'; // Fallback color
+            }
+        }
+    };
+    
+    img.onerror = () => {
+        console.warn('Failed to load image for color sampling');
+        colorSampler.style.backgroundColor = 'rgba(255, 0, 0, 0.5)'; // Fallback color
+    };
+    
+    img.src = bgImage;
 }

@@ -154,3 +154,16 @@ body, html {
 .tool-slot.active svg {
     fill: #4CAF50;
 }
+
+#color-sampler {
+    position: fixed;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1px solid white;
+    box-shadow: 0 0 2px rgba(0,0,0,0.5);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 1500;
+    display: none;
+}
