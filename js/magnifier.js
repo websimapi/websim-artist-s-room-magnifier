@@ -3,6 +3,9 @@ import { isPointInCanvas } from './canvasDetection.js';
 // Constants
 const zoomLevel = 3; // How much to zoom in
 
+// Shared color state
+let selectedColor = 'black';
+
 /**
  * Sets up magnifier functionality
  */
@@ -27,6 +30,52 @@ export function setupMagnifier() {
     colorSampler.id = 'color-sampler';
     colorSampler.style.display = 'none';
     document.body.appendChild(colorSampler);
+    
+    // Create color selected display
+    const colorSelected = document.createElement('div');
+    colorSelected.id = 'color-selected';
+    colorSelected.style.backgroundColor = selectedColor;
+    document.body.appendChild(colorSelected);
+    
+    // Add click handler for color selection
+    imageContainer.addEventListener('click', selectColor);
+}
+
+/**
+ * Select color when clicked in magnify mode
+ */
+function selectColor(e) {
+    // Only select color when magnifier is active
+    const magnifier = document.getElementById('magnifier');
+    const colorSelected = document.getElementById('color-selected');
+    const activeTools = window.activeTools || [];
+    
+    if (activeTools.includes('magnifier') && magnifier.style.display === 'block') {
+        // Get the current sampled color
+        const colorSampler = document.getElementById('color-sampler');
+        selectedColor = getComputedStyle(colorSampler).backgroundColor;
+        
+        // Show the selected color indicator
+        colorSelected.style.backgroundColor = selectedColor;
+        colorSelected.style.display = 'block';
+        
+        // Update brush cursor with selected color
+        updateBrushCursor();
+        
+        console.log('Color selected:', selectedColor);
+    }
+}
+
+/**
+ * Update the brush cursor with selected color
+ */
+export function updateBrushCursor() {
+    // Create SVG brush cursor with the selected color
+    const brushColor = selectedColor || 'black';
+    const brushCursor = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24'%3E%3Cpath fill='%23000000' d='M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3z'/%3E%3Cpath fill='${encodeURIComponent(brushColor)}' d='M7 14.5c-1.25 0-2.25 1-2.25 2.25s1 2.25 2.25 2.25 2.25-1 2.25-2.25-1-2.25-2.25-2.25z'/%3E%3Cpath fill='%23000000' d='M20.71 4.63l-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z'/%3E%3C/svg%3E") 0 24, auto`;
+    
+    // Store for use in moveMagnifier
+    window.brushCursor = brushCursor;
 }
 
 /**
@@ -67,8 +116,10 @@ export function moveMagnifier(e) {
         if (hasBrush) {
             // Show brush cursor inside canvas when brush tool is active
             magnifier.style.display = 'none';
-            document.body.style.cursor = 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'32\' height=\'32\' viewBox=\'0 0 24 24\'%3E%3Cpath fill=\'%23000000\' d=\'M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z\'/%3E%3C/svg%3E") 0 24, auto';
-            imageContainer.style.cursor = document.body.style.cursor;
+            // Use custom brush cursor with selected color
+            const brushCursor = window.brushCursor || `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24'%3E%3Cpath fill='%23000000' d='M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z'/%3E%3C/svg%3E") 0 24, auto`;
+            document.body.style.cursor = brushCursor;
+            imageContainer.style.cursor = brushCursor;
         } else {
             // Normal cursor inside canvas for any other tool
             magnifier.style.display = 'none';

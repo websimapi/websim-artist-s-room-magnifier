@@ -1,5 +1,5 @@
 import { generateAndSetImage } from './imageUtils.js';
-import { setupMagnifier } from './magnifier.js';
+import { setupMagnifier, updateBrushCursor } from './magnifier.js';
 import { setupResizeTools } from './resizeTools.js';
 import { setupToolBelt } from './toolBelt.js';
 
@@ -16,6 +16,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Setup tool belt functionality
     setupToolBelt();
+    
+    // Initialize brush with default color
+    updateBrushCursor();
     
     // Handle window resize events
     window.addEventListener('resize', () => {
