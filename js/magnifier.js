@@ -38,20 +38,28 @@ export function setupMagnifier() {
     document.body.appendChild(colorSelected);
     
     // Add click handler for color selection
-    imageContainer.addEventListener('click', selectColor);
+    imageContainer.addEventListener('click', handleClick);
 }
 
 /**
- * Select color when clicked in magnify mode
+ * Handle click events for both color selection and drawing
  */
-function selectColor(e) {
-    // Only select color when magnifier is active
+function handleClick(e) {
     const magnifier = document.getElementById('magnifier');
     const colorSelected = document.getElementById('color-selected');
+    const imageContainer = document.getElementById('image-container');
     const activeTools = window.activeTools || [];
     
+    // Get cursor position relative to the container
+    const rect = imageContainer.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Check if we're over the canvas
+    const isOverCanvas = isPointInCanvas(x, y);
+    
     if (activeTools.includes('magnifier') && magnifier.style.display === 'block') {
-        // Get the current sampled color
+        // Select color when magnifier is active and visible
         const colorSampler = document.getElementById('color-sampler');
         selectedColor = getComputedStyle(colorSampler).backgroundColor;
         
@@ -63,7 +71,33 @@ function selectColor(e) {
         updateBrushCursor();
         
         console.log('Color selected:', selectedColor);
+    } else if (isOverCanvas && activeTools.includes('brush')) {
+        // Draw a dot at the click position
+        drawDot(x, y, selectedColor);
     }
+}
+
+/**
+ * Draws a dot at the specified position with the given color
+ */
+function drawDot(x, y, color) {
+    const imageContainer = document.getElementById('image-container');
+    
+    // Create a new div element for the dot
+    const dot = document.createElement('div');
+    dot.className = 'paint-dot';
+    dot.style.position = 'absolute';
+    dot.style.left = `${x}px`;
+    dot.style.top = `${y}px`;
+    dot.style.width = '10px';
+    dot.style.height = '10px';
+    dot.style.backgroundColor = color;
+    dot.style.borderRadius = '50%';
+    dot.style.pointerEvents = 'none'; // Prevent dots from interfering with mouse events
+    dot.style.zIndex = '500'; // Above the image but below UI elements
+    
+    // Add the dot to the container
+    imageContainer.appendChild(dot);
 }
 
 /**
@@ -115,7 +149,7 @@ export function moveMagnifier(e) {
         // Inside canvas area - always show brush cursor when inside canvas
         magnifier.style.display = 'none';
         // Use custom brush cursor with selected color
-        const brushCursor = window.brushCursor || `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24'%3E%3Cpath fill='%23000000' d='M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z'/%3E%3C/svg%3E") 0 24, auto`;
+        const brushCursor = window.brushCursor || `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24'%3E%3Cpath fill='%23000000' d='M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3z'/%3E%3Cpath fill='%23000000' d='M7 14.5c-1.25 0-2.25 1-2.25 2.25s1 2.25 2.25 2.25 2.25-1 2.25-2.25-1-2.25-2.25-2.25z'/%3E%3Cpath fill='%23000000' d='M20.71 4.63l-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z'/%3E%3C/svg%3E") 0 24, auto`;
         document.body.style.cursor = brushCursor;
         imageContainer.style.cursor = brushCursor;
     } else {
